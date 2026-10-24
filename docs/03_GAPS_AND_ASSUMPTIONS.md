@@ -1,38 +1,49 @@
-# Market Gaps & Evidence vs. Assumptions
+# Market Gaps, Evidence & Hypothesis Validation
 
-To build a viable SaaS product, we must clearly separate empirically verified market realities from unvalidated assumptions.
+This document establishes the empirical foundation for Veylix, separating verified operational facts from unvalidated market hypotheses.
 
 ---
 
-## 1. Identified Market Gaps
+## 1. The "Pre-CVE Maintenance Gap" as an Unvalidated Hypothesis
 
-1. **The "Pre-CVE" Maintenance Blindspot:**
-   - Most tools react only *after* a vulnerability is published in NVD/GHSA.
-   - There is no mainstream, lightweight tool continuously telling repo owners: *"This dependency has had no commits in 2 years, has only 1 active maintainer, and has 45 open issues—consider evaluating an alternative before a critical issue strikes."*
+### The Hypothesis
+> **Hypothesis:** Developers and repository maintainers care enough about upstream package abandonment and maintenance velocity that they will actively prioritize and act on "maintenance vitality" alerts *before* an official CVE is published.
 
-2. **Action Prioritization vs. Notification Spun:**
-   - Tools either flood the repository with individual PRs (Dependabot) or give an unranked list of 100+ package bumps (Renovate).
-   - Developers need a simple ranking:
-     - **Tier 1 (Urgent):** Exploitable CVE or Critical vulnerability in an unmaintained package.
-     - **Tier 2 (High):** Known vulnerability with a non-breaking safe patch available.
-     - **Tier 3 (Maintenance Risk):** Abandoned or deprecated package without active maintainers.
-     - **Tier 4 (Routine):** Minor/patch version updates with high test pass rates and active maintainers.
+### Adjacent Competitors & Existing Tooling
+While standard tools focus on CVEs, several solutions already address parts of this problem:
+* **Socket.dev:** Proactively monitors npm and PyPI for supply chain anomalies, unmaintained packages, install scripts, and author churn.
+* **Endor Labs:** Evaluates dependency lifecycle risk, maintenance cadence, and whether vulnerable methods are reachable.
+* **OpenSSF Scorecard:** Automated security and maintenance checks (`Maintained`, `Code-Review`, `Branch-Protection`).
+* **Debricked:** Incorporates community health metrics directly into its SCA dashboard.
+* **Ecosystem-Native Signals:** `npm audit` warns about deprecated packages directly in the terminal; `pip` warns on unsupported runtime configurations.
 
-3. **Accessibility & Pricing Transparency:**
-   - Snyk is priced out of reach for independent developers and startups.
-   - OSV-Scanner has zero UI or SaaS workflow.
-   - An intuitive, developer-focused dashboard with generous free/freemium access fills this void.
+### Supporting Evidence
+1. **Supply Chain Risks in Neglected Projects:** High-profile security incidents (such as `event-stream` or the `xz-utils` backdoor) showed that unmaintained or under-maintained libraries with burned-out maintainers are vulnerable to social engineering and ownership hijacking.
+2. **Technical Debt Accumulation:** Stale libraries hold back major runtime upgrades (e.g., Python 3.8 EOL, Node ESM migration), eventually forcing high-stress emergency rewrites.
+
+### Counterarguments & Industry Skepticism
+1. **"Mature & Stable" vs. "Abandoned":** Many single-purpose libraries (e.g., `is-number`, `mime-types`) are feature-complete and require zero commits for years. Flagging them as "high risk" creates developer irritation and false alarms.
+2. **High Migration Friction:** Upgrading a patched library is a one-line semver bump. In contrast, replacing an unmaintained library requires architectural refactoring, testing, and migration cost. Without a direct drop-in replacement, developers will defer the task.
+3. **"If It's Not Broken, Don't Touch It":** In commercial environments under sprint deadlines, engineering managers rarely approve replacing a working library solely based on a low commit frequency.
+
+### User-Validation Experiments
+
+| Experiment | Target Group | Methodology | Success Metric |
+| :--- | :--- | :--- | :--- |
+| **Exp 1: Triage Survey** | 10 active GitHub maintainers | Present a real audit of their repository with two lists: (A) CVEs vs. (B) Abandoned packages. Ask which ones they would schedule in their next sprint. | $\ge 60\%$ express willingness to act on non-CVE maintenance risks within a quarter. |
+| **Exp 2: False-Positive Calibration** | 50 top open-source repos | Run vitality scoring on mature repositories (e.g., Express, FastAPI, Redux). Count how many feature-complete, zero-defect libraries are falsely tagged as "Critical Risk". | False-positive rate on stable utility libraries is under $10\%$. |
+| **Exp 3: Actionability Test** | Beta users | Provide maintenance warning cards with vs. without suggested migration alternatives (e.g., "Consider migrating from `request` to `undici` or `axios`"). | Measurable click-through or action rate $> 25\%$ higher when replacement options are surfaced. |
 
 ---
 
 ## 2. Verified Evidence vs. Unvalidated Assumptions
 
-| Category | Item | Classification | Evidence / Basis | Validation Next Step |
+| Category | Item | Classification | Evidence / Basis | Next Validation Step |
 | :--- | :--- | :--- | :--- | :--- |
-| **User Pain** | Developers suffer from PR noise and alert fatigue from automated dependency bots. | **Verified Evidence** | Documented across developer surveys, Renovate's core rationale for the Dependency Dashboard, and community articles on bot fatigue. | N/A (Confirmed) |
-| **Data Availability** | Open-source vulnerabilities can be queried freely via open REST APIs without paid licensing. | **Verified Evidence** | Google OSV API (`api.osv.dev`) and deps.dev API provide open, public REST endpoints for querying advisory databases (GHSA, PyPI, RustSec, Go, etc.). | N/A (Confirmed) |
-| **Maintenance Signals** | Package maintenance metrics (commits, releases, OpenSSF Scorecard) are programmatically accessible. | **Verified Evidence** | `deps.dev` v3 API maps package versions (`purl`) directly to repository OpenSSF Scorecard evaluations (`Maintained`, `Code-Review`, `Branch-Protection`). | Verified via public API schema. |
-| **GitHub Permissions** | We can inspect manifests without reading proprietary source code. | **Verified Evidence** | GitHub App permissions allow `Contents: read-only` targeting only manifest filenames (`package.json`, `requirements.txt`, etc.) via the Trees/Contents API. | Verified against GitHub Apps API documentation. |
-| **Product Value** | Developers will prefer an external SaaS dashboard over in-repo PRs for triaging. | **Assumption** | Some developers strongly prefer staying entirely inside GitHub PRs/Issues and dislike leaving the GitHub UI. | Interview 5-10 maintainers on whether they want a Web Dashboard, a single GitHub Issue (like Renovate), or both. |
-| **Score Trust** | Maintainers will trust a composite "Veylix Health Score" (0–100). | **Assumption** | If the scoring algorithm is opaque ("black box"), developers will mistrust it. | Ensure the score calculation is transparent, deterministic, and displays itemized reasons. |
-| **Willingness to Pay** | Teams will pay $15–$30/repo/month for maintenance intelligence if PR automation is omitted. | **Assumption** | Teams might consider intelligence without automated PR fixing incomplete. | Validate willingness to pay during closed beta testing. |
+| **User Pain** | Developers experience alert fatigue from noisy, un-grouped dependency bots. | **Verified Evidence** | Documented across developer surveys, Renovate's core rationale for the Dependency Dashboard, and community feedback. | N/A (Confirmed) |
+| **Data Access** | Vulnerabilities can be queried freely via open REST APIs with zero licensing costs. | **Verified Evidence** | Google OSV API (`api.osv.dev`) provides public REST endpoints supporting batch queries up to 1,000 packages. | Verified via official documentation. |
+| **Health Signals** | OpenSSF Scorecard metrics can be fetched freely for public packages. | **Verified Evidence** | Google `deps.dev` v3 API provides package metadata and OpenSSF Scorecard checks under CC-BY 4.0 terms. | Verified via official API endpoints. |
+| **GitHub Permissions** | Manifests can be inspected without cloning or storing proprietary code. | **Verified Evidence** | GitHub App permissions allow `Contents: read-only` targeting only manifest filenames via the Git Trees/Blobs API. | Verified against GitHub Apps API documentation. |
+| **UI Delivery** | Developers want a standalone web dashboard rather than an in-repo issue. | **Assumption** | Some developers strongly prefer staying entirely inside GitHub PRs/Issues (like Renovate's Dependency Dashboard). | Validate through initial beta user feedback. |
+| **Pre-CVE Action** | Developers will allocate sprint cycles to replace unmaintained libraries before a CVE hits. | **Unvalidated Hypothesis** | Many teams defer refactors until forced by a security incident or runtime breakage. | Execute Validation Experiments 1 & 3. |
+| **Stateless UX** | A stateless, on-demand scan is sufficient for early maintainer value. | **Assumption** | Users might expect historical diffs and scheduled notifications immediately. | Confirm with prototype user testing. |

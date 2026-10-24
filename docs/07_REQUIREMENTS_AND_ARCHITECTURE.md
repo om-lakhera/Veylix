@@ -1,170 +1,145 @@
-# Requirements & System Architecture Plan
+# Requirements & Refined System Architecture (Strict ₹0 Budget)
 
-This document details the functional and non-functional specifications, system architecture, data models, and scan lifecycle for Veylix.
+This document specifies the refined functional/non-functional requirements, data flow, component architecture, and scoring algorithm for Veylix under the strict ₹0 operating model.
 
 ---
 
 ## 1. Functional Requirements (FR)
 
-* **FR-1: GitHub App Integration:**
-  * Authenticate users using GitHub OAuth.
-  * Receive and handle installation webhooks (`installation`, `installation_repositories`).
-  * Ingest `push` events to trigger scans when manifest files change on the default branch.
-* **FR-2: Manifest Detection & In-Memory Parsing:**
-  * Support `package.json` + `package-lock.json` / `pnpm-lock.yaml`.
-  * Support `requirements.txt` / `poetry.lock`.
-  * Extract package names, current versions, and semantic version constraints.
-  * Never persist source files to disk.
-* **FR-3: Threat Intelligence Enrichment:**
-  * Batch query OSV API (`api.osv.dev`) for all extracted package versions.
-  * Extract CVE IDs, GHSA IDs, severity level, affected range, and fixed versions.
-* **FR-4: Maintenance Health Enrichment:**
-  * Query `deps.dev` / OpenSSF Scorecard API for package health signals:
-    * Project `Maintained` score (0–10).
-    * Days since last package release.
-    * Open issues / commit activity trends.
-* **FR-5: Prioritized Triage Engine:**
-  * Calculate repository composite health score (0–100 scale).
-  * Assign priority tags:
-    - `CRITICAL`: Active advisory with known exploit or abandoned maintainer.
-    - `HIGH`: Known vulnerability with safe patch available.
-    - `MAINTENANCE_RISK`: Library abandoned >18 months or unmaintained score <3/10.
-    - `LOW`: Routine upgrade available, library healthy.
-* **FR-6: Repository Dashboard & Triage View:**
-  * View connected repositories and their aggregate health scores.
-  * Filter and sort issues by priority tier, ecosystem, and status.
-  * Detail modal showing advisory descriptions, Scorecard breakdown, and suggested resolution.
+* **FR-1: Manifest & Lockfile Parsing (npm & Python):**
+  * Support npm manifests (`package.json`, `package-lock.json`, and `pnpm-lock.yaml`).
+  * Support Python manifests (`requirements.txt`, `poetry.lock`).
+  * Extract package names, current versions, and resolved target versions strictly in-memory.
+  * Never clone repository source code or write customer code to disk.
+* **FR-2: Batch Vulnerability Matching (Google OSV API):**
+  * Batch all extracted dependencies into a single HTTP POST request to `https://api.osv.dev/v1/querybatch` (consuming only 1 Cloudflare subrequest).
+  * Parse returned CVE/GHSA identifiers, CVSS severity levels, affected version ranges, and fixed versions.
+* **FR-3: Maintenance Vitality Enrichment (Google deps.dev API):**
+  * Query `api.deps.dev/v3alpha/purl/` for direct dependencies (capped at $\le 30$ subrequests per invocation to protect Workers limits).
+  * Extract project `Maintained` score (0–10), last release date, and license info.
+  * If deps.dev returns HTTP 429 or no Scorecard exists, fallback gracefully to neutral vitality defaults without failing the scan.
+* **FR-4: Transparent Risk Prioritization:**
+  * Calculate an itemized **Veylix Risk Score (0–100)** for each dependency.
+  * Assign deterministic priority tiers:
+    - 🔴 **IMMEDIATE:** Active CVE advisory with fixed patch or unmaintained dependency.
+    - 🟡 **HIGH:** Known CVE with clear upgrade path, or abandoned core dependency.
+    - 🟠 **MAINTENANCE_WARNING:** Dependency unmaintained $>18$ months or OpenSSF Maintained score $<3/10$, but no known CVE.
+    - 🟢 **HEALTHY:** Actively maintained, no open advisories.
+* **FR-5: Interactive Web Dashboard (React + Vite + Vanilla CSS):**
+  * Single-page application hosted on Cloudflare Pages (`*.pages.dev`).
+  * Displays repository aggregate health score, risk breakdown chart, and searchable triage queue.
+  * Allows users to input public GitHub URLs or paste lockfiles directly for zero-friction analysis.
 
 ---
 
 ## 2. Non-Functional Requirements (NFR)
 
-* **NFR-1 (Security & Privacy):** Zero code retention. Strictly ephemeral parsing of manifest files.
-* **NFR-2 (Performance):** Complete full dependency scan and enrichment for a 100-package repository in under 5 seconds.
-* **NFR-3 (Scalability):** Asynchronous worker queues for scanning to prevent blocking webhook responses or web API requests.
-* **NFR-4 (Reliability):** Implement exponential backoff for external API queries (OSV, deps.dev, GitHub API) to handle transient rate limits or outages gracefully.
+* **NFR-1 (Strict Zero Cost):** All infrastructure must execute within Cloudflare Workers Free and Cloudflare Pages Free quotas. No paid services, paid APIs, or overage-eligible accounts.
+* **NFR-2 (Subrequest Ceiling):** Total external HTTP fetches per scan invocation must strictly remain under **40 subrequests** (well within Cloudflare Worker's 50 subrequest limit).
+* **NFR-3 (Execution Time & Memory):** Manifest parsing and score calculation must complete within **10 ms active CPU time** and **128 MB RAM**.
+* **NFR-4 (Zero Code Retention & Privacy):** Raw manifest contents are parsed ephemerally and discarded immediately after generating the dependency tuple array.
+* **NFR-5 (Graceful Degradation):** Under API rate-limiting or quota exhaustion, the system must degrade to cached results, vulnerability-only mode, or polite informational notices—never presenting paywalls or upgrade screens.
 
 ---
 
-## 3. High-Level System Architecture
+## 3. Refined System Architecture
 
 ```mermaid
 graph TD
-    subgraph GitHub
-        GH_User[Repository Owner]
-        GH_Webhook[GitHub Webhooks / API]
+    subgraph Client Layer [Cloudflare Pages Free - *.pages.dev]
+        User[Developer / Maintainer]
+        WebUI[React + Vite Dashboard<br/>Vanilla CSS]
+        BrowserCache[(sessionStorage / localStorage)]
     end
 
-    subgraph Veylix Platform
-        API_GW[Veylix API & Webhooks Handler]
-        JobQueue[(Redis Queue / BullMQ)]
-        ScanWorker[Scanner Worker Service]
-        ScoreEngine[Prioritization & Score Engine]
-        DB[(PostgreSQL Database)]
-        WebUI[Veylix Web Dashboard]
+    subgraph Serverless Compute [Cloudflare Workers Free - *.workers.dev]
+        Router[API Request Router]
+        Parser[In-Memory Manifest Parser<br/>npm & Python]
+        OSVClient[OSV Batch Client<br/>1 Subrequest]
+        DepsClient[deps.dev Client<br/>Max 30 Subrequests]
+        TriageEngine[Deterministic Scoring Engine]
     end
 
-    subgraph External Open Intelligence
-        OSV_API[Google OSV API<br/>Vulnerabilities]
-        DEPS_API[Google deps.dev API<br/>Scorecards & Health]
+    subgraph External Open Data [Strictly Free Public APIs]
+        GH_API[GitHub Public REST API<br/>Contents: read-only]
+        OSV_API[Google OSV API<br/>POST /v1/querybatch]
+        DEPS_API[Google deps.dev API<br/>GET /v3alpha/purl/]
     end
 
-    GH_User -->|Installs App| GH_Webhook
-    GH_Webhook -->|Push / Install Event| API_GW
-    API_GW -->|Enqueue Scan Job| JobQueue
-    JobQueue -->|Pulls Job| ScanWorker
-    ScanWorker -->|Fetch Manifest Only| GH_Webhook
-    ScanWorker -->|Query Advisories| OSV_API
-    ScanWorker -->|Query Health & Scorecard| DEPS_API
-    ScanWorker -->|Raw Findings| ScoreEngine
-    ScoreEngine -->|Compute Health Score & Priorities| DB
-    WebUI -->|Query Repos & Triage Queue| DB
-    GH_User -->|Views Insights| WebUI
+    User -->|1. Enters Repo URL or Pastes Lockfile| WebUI
+    WebUI -->|Check local cache| BrowserCache
+    WebUI -->|2. POST /api/scan| Router
+    Router -->|3. Fetch manifest if URL provided| GH_API
+    Router -->|4. In-memory parse| Parser
+    Parser -->|5. Single batch query| OSVClient
+    OSVClient -->|Batch POST| OSV_API
+    Parser -->|6. Direct deps lookups| DepsClient
+    DepsClient -->|GET Scorecards| DEPS_API
+    OSVClient & DepsClient -->|7. Enriched Data| TriageEngine
+    TriageEngine -->|8. Prioritized JSON Payload| WebUI
+    WebUI -->|9. Render Dashboard & Cache| BrowserCache
 ```
 
 ---
 
-## 4. Conceptual Data Schema
+## 4. Prototype Data Flow (Stateless In-Memory Model)
 
-```mermaid
-erDiagram
-    ORGANIZATION ||--o{ REPOSITORY : owns
-    REPOSITORY ||--o{ SCAN : has
-    SCAN ||--o{ DEPENDENCY : contains
-    DEPENDENCY ||--o{ ADVISORY : matches
-    DEPENDENCY ||--o| HEALTH_METRIC : assesses
+Rather than maintaining a persistent database (Cloudflare D1 deferred to Phase 2), the prototype operates with a lightweight, transient TypeScript interface:
 
-    ORGANIZATION {
-        uuid id PK
-        string github_org_id
-        string name
-        timestamp created_at
-    }
+```typescript
+export interface DependencyFinding {
+  name: string;
+  ecosystem: 'npm' | 'pypi';
+  currentVersion: string;
+  latestVersion?: string;
+  advisories: {
+    id: string; // CVE or GHSA
+    severity: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW';
+    summary: string;
+    fixedVersion?: string;
+  }[];
+  vitality: {
+    maintainedScore: number | null; // 0-10 from OpenSSF
+    daysSinceLastRelease: number | null;
+    isAbandoned: boolean;
+    license?: string;
+  };
+  veylixScore: number; // 0-100 risk score
+  priorityTier: 'IMMEDIATE' | 'HIGH' | 'MAINTENANCE_WARNING' | 'HEALTHY';
+}
 
-    REPOSITORY {
-        uuid id PK
-        uuid organization_id FK
-        string github_repo_id
-        string full_name
-        string default_branch
-        int health_score
-        timestamp last_scanned_at
-    }
-
-    SCAN {
-        uuid id PK
-        uuid repository_id FK
-        string commit_sha
-        string status
-        int total_dependencies
-        int critical_count
-        int maintenance_risk_count
-        timestamp completed_at
-    }
-
-    DEPENDENCY {
-        uuid id PK
-        uuid scan_id FK
-        string ecosystem
-        string name
-        string current_version
-        string latest_version
-        string priority_tier
-    }
-
-    ADVISORY {
-        uuid id PK
-        uuid dependency_id FK
-        string advisory_id
-        string severity
-        string fixed_version
-        string summary
-    }
-
-    HEALTH_METRIC {
-        uuid id PK
-        uuid dependency_id FK
-        float openssf_score
-        int days_since_last_release
-        boolean is_deprecated
-        boolean is_abandoned
-    }
+export interface ScanResult {
+  repository?: string;
+  timestamp: string;
+  overallHealthScore: number; // 0-100 (100 = optimal health)
+  totalDependencies: number;
+  criticalIssuesCount: number;
+  maintenanceRisksCount: number;
+  findings: DependencyFinding[];
+}
 ```
 
 ---
 
-## 5. Prioritization Algorithm Logic
+## 5. Prioritization Algorithm Specification
 
 The **Veylix Risk Score** per dependency is computed as:
-$$\text{Risk Score} = w_v \cdot S_{\text{vulnerability}} + w_m \cdot S_{\text{maintenance}} + w_e \cdot S_{\text{exposure}}$$
+$$\text{Risk Score} = \min(100, S_{\text{vulnerability}} + S_{\text{vitality}})$$
 
-- **$S_{\text{vulnerability}}$ (0 to 100):** Based on CVSS base score or severity: Critical = 100, High = 75, Medium = 40, Low = 15, None = 0.
-- **$S_{\text{maintenance}}$ (0 to 100):** Based on OpenSSF Scorecard `Maintained` subscore and release staleness:
-  - Last release > 2 years ago or marked unmaintained: +50 points.
-  - OpenSSF Scorecard < 4.0: +30 points.
-  - Active commits within 30 days: 0 points.
-- **Priority Tier Classification:**
-  - $\ge 80$: 🔴 **Immediate**
-  - $50 - 79$: 🟡 **High**
-  - $25 - 49$: 🟠 **Maintenance Warning**
-  - $< 25$: 🟢 **Healthy**
+### Component Scores:
+1. **$S_{\text{vulnerability}}$ (0 to 100):**
+   * Critical Severity CVE: $80\text{ pts}$
+   * High Severity CVE: $55\text{ pts}$
+   * Moderate Severity CVE: $30\text{ pts}$
+   * Low Severity CVE: $15\text{ pts}$
+   * No Known Advisory: $0\text{ pts}$
+2. **$S_{\text{vitality}}$ (0 to 40):**
+   * OpenSSF Maintained score $< 3.0$ or flagged unmaintained: $+25\text{ pts}$
+   * Days since last release $> 730\text{ days}$ ($>2\text{ years}$): $+15\text{ pts}$
+   * Active release within last 90 days: $0\text{ pts}$
+
+### Tier Assignment:
+* $\ge 75$: 🔴 **IMMEDIATE** (Requires attention this sprint)
+* $45 - 74$: 🟡 **HIGH** (Scheduled upgrade)
+* $20 - 44$: 🟠 **MAINTENANCE_WARNING** (Track for migration / deprecation)
+* $< 20$: 🟢 **HEALTHY** (Routine dependency)

@@ -1,0 +1,73 @@
+{
+  "results": [
+    {
+      "vulns": [
+        {
+          "id": "GHSA-p6mc-m468-83gw",
+          "summary": "Prototype Pollution in lodash",
+          "details": "Lodash versions prior to 4.17.19 are vulnerable to Prototype Pollution via zipObjectDeep.",
+          "aliases": ["CVE-2020-8203"],
+          "published": "2020-07-15T22:00:00Z",
+          "database_specific": {
+            "severity": "HIGH",
+            "github_reviewed": true
+          },
+          "affected": [
+            {
+              "package": {
+                "name": "lodash",
+                "ecosystem": "npm"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    { "introduced": "0" },
+                    { "fixed": "4.17.19" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vulns": []
+    },
+    {
+      "vulns": []
+    },
+    {
+      "vulns": [
+        {
+          "id": "GHSA-xvch-5ox4-9848",
+          "summary": "Prototype Pollution in minimist",
+          "details": "Affected versions of minimist are vulnerable to prototype pollution.",
+          "aliases": ["CVE-2020-7598"],
+          "published": "2020-03-11T23:00:00Z",
+          "database_specific": {
+            "severity": "CRITICAL"
+          },
+          "affected": [
+            {
+              "package": {
+                "name": "minimist",
+                "ecosystem": "npm"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    { "introduced": "0" },
+                    { "fixed": "1.2.2" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

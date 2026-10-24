@@ -1,0 +1,25 @@
+{
+  "name": "sample-v1-project",
+  "version": "1.0.0",
+  "lockfileVersion": 1,
+  "requires": true,
+  "dependencies": {
+    "lodash": {
+      "version": "4.17.15",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.15.tgz"
+    },
+    "minimist": {
+      "version": "1.2.0",
+      "resolved": "https://registry.npmjs.org/minimist/-/minimist-1.2.0.tgz",
+      "dev": true
+    },
+    "nested-parent": {
+      "version": "1.0.0",
+      "dependencies": {
+        "lodash": {
+          "version": "4.17.21"
+        }
+      }
+    }
+  }
+}
