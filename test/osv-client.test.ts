@@ -155,4 +155,82 @@ describe('OSVClient & Advisory Transformer', () => {
       'OSV API response missing "results" array.'
     );
   });
+
+  describe('Regression: Multi-Range Events & Candidate Fix Selection', () => {
+    it('correctly parses multiple range events and selects the relevant fix for targetVersion', () => {
+      // Advisory has fixes for 3.x branch (3.10.1) and 4.x branch (4.17.21)
+      const advisory = {
+        id: 'GHSA-multi-range',
+        summary: 'Vulnerability affecting multiple branches',
+        database_specific: { severity: 'HIGH' },
+        affected: [
+          {
+            package: { name: 'lodash', ecosystem: 'npm' },
+            ranges: [
+              {
+                type: 'SEMVER',
+                events: [
+                  { introduced: '3.0.0' },
+                  { fixed: '3.10.1' },
+                  { introduced: '4.0.0' },
+                  { fixed: '4.17.21' }
+                ]
+              }
+            ]
+          }
+        ]
+      };
+
+      // For target on 4.17.15, the fix must be 4.17.21 (NOT 3.10.1!)
+      const finding4 = OSVClient.transformAdvisory(advisory, 'lodash', '4.17.15');
+      expect(finding4.fixedVersion).toBe('4.17.21');
+      expect(finding4.actionableRecommendation).toBe(
+        'Upgrade lodash from version 4.17.15 to 4.17.21 or later to patch this vulnerability.'
+      );
+      expect(finding4.affectedVersionRange).toContain('>= 3.0.0, < 3.10.1');
+      expect(finding4.affectedVersionRange).toContain('>= 4.0.0, < 4.17.21');
+
+      // For target on 3.2.0, the fix must be 3.10.1
+      const finding3 = OSVClient.transformAdvisory(advisory, 'lodash', '3.2.0');
+      expect(finding3.fixedVersion).toBe('3.10.1');
+    });
+
+    it('does not recommend an older version as a fix if targetVersion is already newer than all candidate fixes', () => {
+      const advisory = {
+        id: 'GHSA-old-fix',
+        summary: 'Fixed only in older versions',
+        database_specific: { severity: 'HIGH' },
+        affected: [
+          {
+            package: { name: 'lodash', ecosystem: 'npm' },
+            ranges: [
+              {
+                type: 'SEMVER',
+                events: [
+                  { introduced: '3.0.0' },
+                  { fixed: '3.10.1' }
+                ]
+              }
+            ]
+          }
+        ]
+      };
+
+      // Target is on 4.17.15, but fix is 3.10.1. Should NOT tell user to "upgrade to 3.10.1"
+      const finding = OSVClient.transformAdvisory(advisory, 'lodash', '4.17.15');
+      expect(finding.fixedVersion).toBeUndefined();
+      expect(finding.actionableRecommendation).toContain('No fixed version is currently recorded');
+    });
+
+    it('normalizes MEDIUM severity to MODERATE and reads ecosystem_specific severity', () => {
+      const advisory = {
+        id: 'GHSA-medium-sev',
+        summary: 'Medium severity test',
+        ecosystem_specific: { severity: 'MEDIUM' }
+      };
+
+      const finding = OSVClient.transformAdvisory(advisory, 'test-lib', '1.0.0');
+      expect(finding.severityLevel).toBe('MODERATE');
+    });
+  });
 });

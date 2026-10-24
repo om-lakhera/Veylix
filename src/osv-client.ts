@@ -18,6 +18,38 @@ const DEFAULT_OSV_URL = 'https://api.osv.dev/v1/querybatch';
 const DEFAULT_VULN_URL = 'https://api.osv.dev/v1/vulns';
 const DEFAULT_TIMEOUT_MS = 10000;
 
+export interface ParsedSemver {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease?: string;
+}
+
+export function parseSemver(v: string): ParsedSemver | null {
+  if (!v || typeof v !== 'string') return null;
+  const clean = v.trim().replace(/^[v=]/, '');
+  const match = clean.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/);
+  if (!match) return null;
+  return {
+    major: parseInt(match[1]!, 10),
+    minor: parseInt(match[2]!, 10),
+    patch: parseInt(match[3]!, 10),
+    prerelease: match[4]
+  };
+}
+
+export function compareSemver(v1: string, v2: string): number | null {
+  const s1 = parseSemver(v1);
+  const s2 = parseSemver(v2);
+  if (!s1 || !s2) return null;
+  if (s1.major !== s2.major) return s1.major - s2.major;
+  if (s1.minor !== s2.minor) return s1.minor - s2.minor;
+  if (s1.patch !== s2.patch) return s1.patch - s2.patch;
+  if (s1.prerelease && !s2.prerelease) return -1;
+  if (!s1.prerelease && s2.prerelease) return 1;
+  return 0;
+}
+
 export class OSVClient {
   private apiUrl: string;
   private vulnApiUrl: string;
@@ -196,13 +228,17 @@ export class OSVClient {
     let severityLevel: VulnerabilityFinding['severityLevel'] = 'UNKNOWN';
     let cvssScore: string | undefined;
 
-    // Check database_specific.severity (GHSA format: "CRITICAL", "HIGH", "MODERATE", "LOW")
-    const dbSev = advisory.database_specific?.severity;
-    if (typeof dbSev === 'string') {
-      const normalized = dbSev.toUpperCase();
-      if (normalized === 'CRITICAL' || normalized === 'HIGH' || normalized === 'MODERATE' || normalized === 'LOW') {
-        severityLevel = normalized;
-      }
+    // Check database_specific.severity and ecosystem_specific.severity (GHSA format: "CRITICAL", "HIGH", "MODERATE" / "MEDIUM", "LOW")
+    const rawSev =
+      advisory.database_specific?.severity ||
+      (advisory as any).ecosystem_specific?.severity;
+
+    if (typeof rawSev === 'string') {
+      const normalized = rawSev.toUpperCase();
+      if (normalized === 'CRITICAL') severityLevel = 'CRITICAL';
+      else if (normalized === 'HIGH') severityLevel = 'HIGH';
+      else if (normalized === 'MODERATE' || normalized === 'MEDIUM') severityLevel = 'MODERATE';
+      else if (normalized === 'LOW') severityLevel = 'LOW';
     }
 
     // Check severities array for CVSS
@@ -213,10 +249,9 @@ export class OSVClient {
         cvssScore = cvss.score;
         // If severityLevel is still UNKNOWN, derive from CVSS string or numerical score if present
         if (severityLevel === 'UNKNOWN') {
-          // CVSS score format might be a string float like "9.8" or a vector like "CVSS:3.1/..."
           const numericMatch = cvss.score.match(/^(\d+(\.\d+)?)$/);
           if (numericMatch) {
-            const scoreNum = parseFloat(numericMatch[1]);
+            const scoreNum = parseFloat(numericMatch[1]!);
             if (scoreNum >= 9.0) severityLevel = 'CRITICAL';
             else if (scoreNum >= 7.0) severityLevel = 'HIGH';
             else if (scoreNum >= 4.0) severityLevel = 'MODERATE';
@@ -229,6 +264,7 @@ export class OSVClient {
     // 2. Extract fixed version & affected version ranges from affected entries
     let fixedVersion: string | undefined;
     const rangeDescriptions: string[] = [];
+    const candidateFixes: string[] = [];
 
     if (Array.isArray(advisory.affected)) {
       for (const aff of advisory.affected) {
@@ -239,23 +275,62 @@ export class OSVClient {
         if (Array.isArray(aff.ranges)) {
           for (const range of aff.ranges) {
             if (Array.isArray(range.events)) {
-              let introduced: string | undefined;
+              let currentIntroduced: string | undefined;
+
               for (const evt of range.events) {
-                if (evt.introduced !== undefined) introduced = evt.introduced;
-                if (evt.fixed !== undefined && !fixedVersion) {
-                  fixedVersion = evt.fixed;
+                if (evt.introduced !== undefined) {
+                  currentIntroduced = evt.introduced;
+                } else if (evt.fixed !== undefined) {
+                  candidateFixes.push(evt.fixed);
+                  if (currentIntroduced !== undefined) {
+                    rangeDescriptions.push(`>= ${currentIntroduced}, < ${evt.fixed}`);
+                    currentIntroduced = undefined;
+                  } else {
+                    rangeDescriptions.push(`< ${evt.fixed}`);
+                  }
+                } else if (evt.last_affected !== undefined) {
+                  if (currentIntroduced !== undefined) {
+                    rangeDescriptions.push(`>= ${currentIntroduced}, <= ${evt.last_affected}`);
+                    currentIntroduced = undefined;
+                  } else {
+                    rangeDescriptions.push(`<= ${evt.last_affected}`);
+                  }
                 }
               }
-              if (introduced && fixedVersion) {
-                rangeDescriptions.push(`>= ${introduced}, < ${fixedVersion}`);
-              } else if (fixedVersion) {
-                rangeDescriptions.push(`< ${fixedVersion}`);
-              } else if (introduced) {
-                rangeDescriptions.push(`>= ${introduced}`);
+
+              // If an introduced version was not closed by fixed/last_affected
+              if (currentIntroduced !== undefined) {
+                rangeDescriptions.push(`>= ${currentIntroduced}`);
               }
             }
           }
         }
+      }
+    }
+
+    // Select the best candidate fix for targetVersion:
+    // Look for candidate fixes that are strictly greater than targetVersion (> targetVersion).
+    // Among those greater versions, select the lowest one (the nearest safe upgrade path).
+    if (candidateFixes.length > 0) {
+      const parsedTarget = parseSemver(targetVersion);
+
+      if (parsedTarget) {
+        const validUpgrades = candidateFixes
+          .filter((fix) => {
+            const cmp = compareSemver(fix, targetVersion);
+            return cmp !== null && cmp > 0;
+          })
+          .sort((a, b) => {
+            const cmp = compareSemver(a, b);
+            return cmp ?? 0;
+          });
+
+        if (validUpgrades.length > 0) {
+          fixedVersion = validUpgrades[0];
+        }
+      } else {
+        // Fallback for non-semver versions (e.g. git hashes): use first recorded candidate fix
+        fixedVersion = candidateFixes[0];
       }
     }
 

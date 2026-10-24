@@ -93,4 +93,54 @@ describe('npm Manifest & Lockfile Parser', () => {
       parseNpmManifests(packageJsonStr, hugeFakeLock, { maxFileSize: 10 })
     ).toThrow('exceeds maximum allowed size of 10 bytes');
   });
+
+  describe('Regression: Direct Dependency & Path Edge Cases', () => {
+    it('marks top-level dependencies in v1 lockfile as isDirect: true even when package.json is missing', () => {
+      const result = parseNpmManifests(null, packageLockV1Str);
+      const lodash = result.packages.find((p) => p.name === 'lodash' && p.version === '4.17.15');
+      expect(lodash).toBeDefined();
+      expect(lodash?.isDirect).toBe(true);
+
+      const minimist = result.packages.find((p) => p.name === 'minimist');
+      expect(minimist?.isDirect).toBe(true);
+
+      // Nested lodash under nested-parent should NOT be direct
+      const nestedLodash = result.packages.find((p) => p.name === 'lodash' && p.version === '4.17.21');
+      expect(nestedLodash?.isDirect).toBe(false);
+    });
+
+    it('handles workspace paths in v3 lockfiles without falsely treating them as top-level dependencies', () => {
+      const lockWithWorkspace = JSON.stringify({
+        name: 'monorepo',
+        lockfileVersion: 3,
+        packages: {
+          '': {
+            name: 'monorepo',
+            workspaces: ['packages/*']
+          },
+          'packages/app': {
+            name: 'app',
+            version: '1.0.0'
+          },
+          'packages/app/node_modules/is-odd': {
+            name: 'is-odd',
+            version: '0.1.2'
+          },
+          'node_modules/is-even': {
+            name: 'is-even',
+            version: '1.0.0'
+          }
+        }
+      });
+
+      const result = parseNpmManifests(null, lockWithWorkspace);
+      expect(result.packages.length).toBe(3); // app, is-odd, is-even
+
+      const isOdd = result.packages.find((p) => p.name === 'is-odd');
+      expect(isOdd?.isDirect).toBe(false); // nested under packages/app, NOT root top-level
+
+      const isEven = result.packages.find((p) => p.name === 'is-even');
+      expect(isEven?.isDirect).toBe(true); // top-level under root node_modules
+    });
+  });
 });
