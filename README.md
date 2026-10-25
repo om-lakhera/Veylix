@@ -57,6 +57,10 @@ The server limits JSON request bodies, supported manifest size, request receive 
 
 Static assets receive cache headers; API responses are `no-store`. Scan API calls and external OSV, deps.dev, and GitHub requests require outbound connectivity. GitHub scanning only fetches supported dependency manifests from `raw.githubusercontent.com`, rejects redirects, and does not clone or execute repository code.
 
+## Optional Render MCP
+
+The workspace includes a VS Code MCP server entry for Render's hosted server in [`.vscode/mcp.json`](./.vscode/mcp.json). When prompted, authorize the Render account through VS Code's OAuth flow; no API key is stored in this repository. The server can perform actions such as changing service environment variables and triggering deploys, so review tool requests before approving them. See [Render's MCP documentation](https://render.com/docs/mcp-server) for details.
+
 ## Scanning, storage, and limitations
 
 - Supported files: npm `package-lock.json` versions 1-3 (optional `package.json`); Python `requirements.txt`; Poetry `poetry.lock` (optional `pyproject.toml`).

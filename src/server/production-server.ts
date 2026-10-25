@@ -244,7 +244,10 @@ const parsedPort = process.env.PORT === undefined ? 3000 : Number(process.env.PO
 if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
   throw new Error('PORT must be an integer between 1 and 65535.');
 }
-const host = process.env.HOST?.trim() || '127.0.0.1';
+const defaultHost = process.env.NODE_ENV === 'production' || process.env.PORT !== undefined
+  ? '0.0.0.0'
+  : '127.0.0.1';
+const host = process.env.HOST?.trim() || defaultHost;
 
 const server = createServer((request, response) => {
   void (async () => {

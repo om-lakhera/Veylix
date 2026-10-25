@@ -20,7 +20,7 @@ This repository does not select a host, production domain, or DNS configuration.
 - [ ] Select a Node.js 20+ host that runs a long-lived HTTP process, supports the required request duration, and permits outbound HTTPS to public GitHub manifests, OSV, and deps.dev.
 - [ ] Verify the host's current price, quotas, API/request limits, logging, TLS, release rollback, and availability terms. $0 hosting is not guaranteed.
 - [ ] Configure the verified production HTTPS origin as build-time `VITE_SITE_URL`. If the domain is not known, canonical URLs and a sitemap remain intentionally absent.
-- [ ] Configure runtime `PORT`; set `HOST=0.0.0.0` for container hosts. Ensure HTTPS terminates at the host or trusted proxy and forwards SPA and `/api/*` requests to the same Node process.
+- [ ] Configure runtime `PORT`. With `NODE_ENV=production` or a platform-provided `PORT`, the server defaults to `HOST=0.0.0.0`; set `HOST` explicitly if the host requires another bind address. Ensure HTTPS terminates at the host or trusted proxy and forwards SPA and `/api/*` requests to the same Node process.
 - [ ] Configure an edge/reverse-proxy request rate limit for the public scan API. The built-in four-active-scan cap is process-local, not distributed or per-user.
 - [ ] Provide the operator identity, support contact, jurisdiction, effective dates, retention/logging details, and have Privacy/Terms reviewed by qualified counsel. Do not invent these values.
 - [ ] Decide operational recovery expectations. Scan history is only in each user's browser `localStorage`; the service has no server-side report backup or restore mechanism.
@@ -44,7 +44,7 @@ There is no configured lint or formatting command. The build includes TypeScript
 ## Configure and launch
 
 1. Build in the deployment environment with the production `VITE_SITE_URL`; it is public metadata and must not contain secrets.
-2. Start with `npm start`, pass the platform `PORT`, and set `HOST=0.0.0.0` when required by the host. No other application credentials or environment variables are currently required.
+2. Start with `npm start` and pass the platform `PORT`. The server defaults to `0.0.0.0` when `NODE_ENV=production` or `PORT` is supplied, and remains on loopback for local development. No other application credentials or environment variables are currently required.
 3. Route TLS-protected public requests to this process. Do not deploy only `dist/` to a static host if GitHub scans are required; this app needs the Node API server.
 4. Check `GET /api/health` and `GET /` after process startup. The health response confirms the API process responds, not the availability of upstream scan providers.
 5. Check direct navigation/refresh for `/new-scan`, `/privacy`, `/terms`, `/cookies`, `/support`, and a valid-format `/scans/<id>` route.
