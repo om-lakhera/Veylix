@@ -2,7 +2,7 @@
  * Core type definitions for Veylix Dependency Analysis Engine
  */
 
-export type SupportedEcosystem = 'npm';
+export type SupportedEcosystem = 'npm' | 'pypi';
 
 export interface PackageIdentifier {
   name: string;
@@ -11,12 +11,14 @@ export interface PackageIdentifier {
   isDirect: boolean;
   isDev: boolean;
   dependencyPaths: string[]; // e.g. ["root -> express -> qs"]
+  declaredConstraint?: string; // e.g. ">=2.0,<3.0" if unpinned or range
 }
 
 export interface ManifestParseResult {
   manifestName?: string;
   manifestVersion?: string;
-  lockfileVersion: number;
+  manifestType: 'package-lock.json' | 'requirements.txt' | 'poetry.lock';
+  lockfileVersion?: number;
   packages: PackageIdentifier[];
   warnings: string[];
 }
@@ -99,6 +101,24 @@ export interface VulnerabilityFinding {
   actionableRecommendation: string;
 }
 
+/**
+ * Maintenance and repository vitality estimate from OpenSSF Scorecard & deps.dev.
+ * Kept strictly independent from vulnerability findings.
+ */
+export interface MaintenanceHealthEstimate {
+  scorecardScore: number | null; // 0-10 overall Scorecard score
+  maintainedScore: number | null; // 0-10 OpenSSF Maintained sub-check score
+  publishedAt?: string;
+  daysSinceRelease?: number;
+  isDeprecated?: boolean;
+  deprecatedReason?: string;
+  sourceRepo?: string;
+  starsCount?: number;
+  openIssuesCount?: number;
+  status: 'ACTIVE' | 'MAINTENANCE_RISK' | 'UNKNOWN' | 'DATA_UNAVAILABLE';
+  signals: string[]; // Explanatory reasons grounded in empirical metrics
+}
+
 export interface AnalyzedPackage {
   name: string;
   version: string;
@@ -108,16 +128,20 @@ export interface AnalyzedPackage {
   dependencyPaths: string[];
   vulnerabilities: VulnerabilityFinding[];
   hasVulnerability: boolean;
+  maintenanceHealth?: MaintenanceHealthEstimate;
 }
 
 export interface ScanSummary {
-  manifestType: 'package-lock.json';
-  lockfileVersion: number;
+  manifestType: 'package-lock.json' | 'requirements.txt' | 'poetry.lock';
+  ecosystem: SupportedEcosystem;
+  lockfileVersion?: number;
   totalUniquePackages: number;
   totalDependenciesResolved: number;
   directDependenciesCount: number;
   vulnerablePackagesCount: number;
   totalAdvisoriesCount: number;
+  maintenanceRisksCount?: number;
+  deprecatedPackagesCount?: number;
   severityCounts: {
     critical: number;
     high: number;
@@ -133,5 +157,6 @@ export interface AnalysisReport {
   summary: ScanSummary;
   packages: AnalyzedPackage[];
   vulnerablePackages: AnalyzedPackage[];
+  maintenanceRiskPackages: AnalyzedPackage[];
   warnings: string[];
 }

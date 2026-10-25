@@ -1,0 +1,81 @@
+{
+  "results": [
+    {
+      "vulns": [
+        {
+          "id": "GHSA-j8r2-6x86-q33q",
+          "summary": "Requests vulnerable to session-level verify=False bypass",
+          "details": "Requests 2.20.0 and earlier are vulnerable to Session data leakage.",
+          "aliases": ["CVE-2018-18074"],
+          "published": "2018-10-10T00:00:00Z",
+          "database_specific": {
+            "severity": "HIGH"
+          },
+          "affected": [
+            {
+              "package": {
+                "name": "requests",
+                "ecosystem": "PyPI"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    { "introduced": "0" },
+                    { "fixed": "2.20.1" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vulns": [
+        {
+          "id": "GHSA-4357-wfr4-x245",
+          "summary": "Flask Unexpected Memory Usage with Large JSON Payloads",
+          "details": "Flask versions prior to 1.0.3 are vulnerable to DoS with large JSON.",
+          "aliases": ["CVE-2019-1010083"],
+          "published": "2019-07-17T00:00:00Z",
+          "database_specific": {
+            "severity": "HIGH"
+          },
+          "affected": [
+            {
+              "package": {
+                "name": "flask",
+                "ecosystem": "PyPI"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    { "introduced": "0" },
+                    { "fixed": "1.0.3" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vulns": []
+    },
+    {
+      "vulns": []
+    },
+    {
+      "vulns": []
+    },
+    {
+      "vulns": []
+    },
+    {
+      "vulns": []
+    }
+  ]
+}

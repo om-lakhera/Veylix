@@ -199,6 +199,7 @@ export function parseNpmManifests(
   return {
     manifestName: manifestName || lock.name,
     manifestVersion: manifestVersion || lock.version,
+    manifestType: 'package-lock.json',
     lockfileVersion,
     packages,
     warnings

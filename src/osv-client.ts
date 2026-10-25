@@ -120,7 +120,7 @@ export class OSVClient {
         queries: chunk.map((pkg) => ({
           package: {
             name: pkg.name,
-            ecosystem: 'npm'
+            ecosystem: pkg.ecosystem === 'pypi' ? 'PyPI' : 'npm'
           },
           version: pkg.version
         }))

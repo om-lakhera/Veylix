@@ -1,0 +1,18 @@
+# Sample Python requirements file for testing
+--index-url https://pypi.org/simple
+-r requirements-base.txt
+
+# Production dependencies with exact pins
+requests==2.20.0
+flask==1.0.2 # Web framework
+urllib3==1.24.1; python_version >= '3.6'
+Django_Crispy_Forms==1.9.0
+
+# Package with extras
+celery[redis]==5.2.0
+
+# Range specification (unpinned exact)
+cryptography>=3.4.0,<4.0.0
+
+# Package with no version
+six
