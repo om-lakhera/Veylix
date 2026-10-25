@@ -15,16 +15,17 @@
     "test:live": "vitest run --config vitest.live.config.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.13.4",
-    "@vitejs/plugin-react": "^4.3.4",
-    "typescript": "^5.7.3",
     "vitest": "^4.1.12"
   },
   "dependencies": {
+    "@types/node": "^22.13.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.4.5"
   },
   "engines": {
     "node": ">=20"

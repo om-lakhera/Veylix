@@ -30,7 +30,7 @@ This repository does not select a host, production domain, or DNS configuration.
 From the repository root, in PowerShell:
 
 ```powershell
-npm ci
+npm install
 $env:VITE_SITE_URL = 'https://<verified-production-origin>'
 npm run build
 npm test
@@ -43,7 +43,7 @@ There is no configured lint or formatting command. The build includes TypeScript
 
 ## Configure and launch
 
-1. Build in the deployment environment with the production `VITE_SITE_URL`; it is public metadata and must not contain secrets.
+1. For Render, use `npm install && npm run build` as the build command. Packages required to compile and bundle the app are declared in `dependencies`, so they remain installed when `NODE_ENV=production` omits `devDependencies`. Set the production `VITE_SITE_URL` during the build; it is public metadata and must not contain secrets.
 2. Start with `npm start` and pass the platform `PORT`. The server defaults to `0.0.0.0` when `NODE_ENV=production` or `PORT` is supplied, and remains on loopback for local development. No other application credentials or environment variables are currently required.
 3. Route TLS-protected public requests to this process. Do not deploy only `dist/` to a static host if GitHub scans are required; this app needs the Node API server.
 4. Check `GET /api/health` and `GET /` after process startup. The health response confirms the API process responds, not the availability of upstream scan providers.
