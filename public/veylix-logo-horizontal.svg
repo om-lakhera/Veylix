@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 180" role="img" aria-labelledby="title">
+<title id="title">Veylix — Scan. Secure. Stay Ahead.</title>
+<defs>
+  <linearGradient id="vgrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#6366F1"/>
+    <stop offset="100%" stop-color="#818CF8"/>
+  </linearGradient>
+</defs>
+<g transform="translate(10,8) scale(.64)">
+  <path d="M35 38 Q31 30 42 30 H81 Q91 30 96 41 L132 112 L169 41 Q174 30 185 30 H216 Q228 30 221 42 L151 202 Q145 216 132 216 Q119 216 113 202 Z" fill="url(#vgrad)"/>
+  <path d="M96 41 L132 112 L169 41 L145 151 Q140 165 132 165 Q124 165 118 151 Z" fill="#A5B4FC" opacity=".58"/>
+</g>
+<text x="190" y="105" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="84" font-weight="750" letter-spacing="-3" fill="#0F172A">Veylix</text>
+<text x="194" y="145" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="23" font-weight="450" fill="#64748B">Scan. Secure. Stay Ahead.</text>
+</svg>

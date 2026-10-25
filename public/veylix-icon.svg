@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+<title id="title">Veylix icon</title>
+<defs>
+  <linearGradient id="vgrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#6366F1"/>
+    <stop offset="100%" stop-color="#818CF8"/>
+  </linearGradient>
+</defs>
+<path d="M35 38 Q31 30 42 30 H81 Q91 30 96 41 L132 112 L169 41 Q174 30 185 30 H216 Q228 30 221 42 L151 202 Q145 216 132 216 Q119 216 113 202 Z" fill="url(#vgrad)"/>
+<path d="M96 41 L132 112 L169 41 L145 151 Q140 165 132 165 Q124 165 118 151 Z" fill="#A5B4FC" opacity=".58"/>
+</svg>

@@ -1,0 +1,3 @@
+export const MAX_MANIFEST_SIZE_BYTES = 5 * 1024 * 1024;
+export const MAX_TOTAL_MANIFEST_SIZE_BYTES = 10 * 1024 * 1024;
+export const MAX_SCAN_REQUEST_BYTES = 21 * 1024 * 1024;

@@ -1,17 +1,32 @@
 {
   "name": "veylix",
   "version": "0.1.0",
-  "description": "Developer-focused dependency health and risk prioritization engine",
+  "description": "Developer-focused dependency health and risk prioritization platform",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "dev": "vite",
+    "build": "tsc && vite build && tsc -p tsconfig.server.json && node scripts/generate-seo-files.mjs",
+    "build:engine": "tsc",
+    "build:ui": "vite build",
+    "preview": "vite preview",
+    "start": "node server-dist/server/production-server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:live": "vitest run --config vitest.live.config.ts"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.6"
+    "vitest": "^4.1.12"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
