@@ -8,6 +8,8 @@ export type ActiveTab =
   | 'dependencies'
   | 'advisories'
   | 'about'
+  | 'faq'
+  | 'documentation'
   | 'privacy'
   | 'terms'
   | 'cookies'

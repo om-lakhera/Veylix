@@ -175,21 +175,13 @@ export class OSVClient {
       });
 
       if (!response.ok) {
-        let errorDetails = '';
-        try {
-          const errorJson = await response.json();
-          errorDetails = JSON.stringify(errorJson);
-        } catch {
-          errorDetails = await response.text().catch(() => '');
-        }
-
         if (response.status === 429) {
-          throw new Error(`OSV API rate limit encountered (HTTP 429): ${errorDetails || 'Too Many Requests'}`);
+          throw new Error('OSV API rate limit encountered (HTTP 429). Please retry later.');
         }
         if (response.status >= 500) {
-          throw new Error(`OSV API server error (HTTP ${response.status}): ${errorDetails || 'Service Unavailable'}`);
+          throw new Error(`OSV API server error (HTTP ${response.status}). Please retry later.`);
         }
-        throw new Error(`OSV API request failed with status ${response.status}: ${errorDetails || 'Bad Request'}`);
+        throw new Error(`OSV API request failed with HTTP ${response.status}.`);
       }
 
       const data = await response.json() as any;
@@ -217,7 +209,12 @@ export class OSVClient {
    * Transforms an OSV raw advisory into a clean, actionable VulnerabilityFinding
    * grounded strictly in returned data.
    */
-  static transformAdvisory(advisory: OSVAdvisory, targetPackageName: string, targetVersion: string): VulnerabilityFinding {
+  static transformAdvisory(
+    advisory: OSVAdvisory,
+    targetPackageName: string,
+    targetVersion: string,
+    targetEcosystem?: PackageIdentifier['ecosystem']
+  ): VulnerabilityFinding {
     const advisoryId = advisory.id;
     const aliases = advisory.aliases || [];
     const summary = advisory.summary || advisory.details?.slice(0, 200) || 'Security advisory published for this package.';
@@ -268,7 +265,14 @@ export class OSVClient {
 
     if (Array.isArray(advisory.affected)) {
       for (const aff of advisory.affected) {
-        if (!aff.package || aff.package.name.toLowerCase() !== targetPackageName.toLowerCase()) {
+        if (
+          !aff?.package ||
+          typeof aff.package.name !== 'string' ||
+          typeof aff.package.ecosystem !== 'string' ||
+          aff.package.name.toLowerCase() !== targetPackageName.toLowerCase() ||
+          (targetEcosystem !== undefined &&
+            aff.package.ecosystem.toLowerCase() !== targetEcosystem.toLowerCase())
+        ) {
           continue;
         }
 

@@ -110,6 +110,7 @@ describe('OSVClient & Advisory Transformer', () => {
     await expect(client.queryBatch(samplePackages)).rejects.toThrow(
       'OSV API rate limit encountered (HTTP 429)'
     );
+    await expect(client.queryBatch(samplePackages)).rejects.not.toThrow('Rate limit exceeded');
   });
 
   it('handles HTTP 500 server error with descriptive error', async () => {
@@ -124,6 +125,7 @@ describe('OSVClient & Advisory Transformer', () => {
     await expect(client.queryBatch(samplePackages)).rejects.toThrow(
       'OSV API server error (HTTP 500)'
     );
+    await expect(client.queryBatch(samplePackages)).rejects.not.toThrow('Internal server error');
   });
 
   it('handles request timeout gracefully', async () => {
@@ -220,6 +222,23 @@ describe('OSVClient & Advisory Transformer', () => {
       const finding = OSVClient.transformAdvisory(advisory, 'lodash', '4.17.15');
       expect(finding.fixedVersion).toBeUndefined();
       expect(finding.actionableRecommendation).toContain('No fixed version is currently recorded');
+    });
+
+    it('does not use a fixed version from a different ecosystem for remediation', () => {
+      const advisory = {
+        id: 'GHSA-cross-ecosystem',
+        summary: 'Cross-ecosystem package name collision',
+        affected: [
+          {
+            package: { name: 'shared-name', ecosystem: 'PyPI' },
+            ranges: [{ type: 'ECOSYSTEM', events: [{ introduced: '0' }, { fixed: '3.0.0' }] }]
+          }
+        ]
+      };
+
+      const finding = OSVClient.transformAdvisory(advisory, 'shared-name', '1.0.0', 'npm');
+      expect(finding.fixedVersion).toBeUndefined();
+      expect(finding.affectedVersionRange).toBeUndefined();
     });
 
     it('normalizes MEDIUM severity to MODERATE and reads ecosystem_specific severity', () => {

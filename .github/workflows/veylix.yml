@@ -1,0 +1,42 @@
+name: Veylix dependency scan
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Setup Node.js
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Veylix CLI
+        run: |
+          node ./bin/veylix.js scan \
+            --file . \
+            --ecosystem npm \
+            --threshold high \
+            --format json > veylix-report.json
+
+      - name: Upload machine-readable report
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a4b1b84a6f5936f49d5f52
+        with:
+          name: veylix-report
+          path: ./veylix-report.json
+          if-no-files-found: warn

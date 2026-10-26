@@ -12,6 +12,7 @@ import { ScanHistoryView } from './views/ScanHistoryView.js';
 import { SettingsAboutView } from './views/SettingsAboutView.js';
 import { InsightsView } from './views/InsightsView.js';
 import { PolicyView, StoragePreferencesDialog } from './views/PolicyView.js';
+import { GuideView } from './views/GuideView.js';
 
 const routeMetadata: Record<ActiveTab, { title: string; description: string; noindex?: boolean }> = {
   dashboard: { title: 'Security Overview', description: 'Review saved dependency scan activity and start a vulnerability or maintenance scan with Veylix.' },
@@ -21,6 +22,8 @@ const routeMetadata: Record<ActiveTab, { title: string; description: string; noi
   dependencies: { title: 'Dependencies', description: 'Review resolved dependencies from a saved Veylix scan report.', noindex: true },
   advisories: { title: 'Advisories', description: 'Review vulnerability advisories returned for a saved Veylix scan report.', noindex: true },
   about: { title: 'Settings & About', description: 'Manage local scan history and review Veylix scan behavior.', noindex: true },
+  faq: { title: 'Frequently Asked Questions', description: 'Answers about Veylix dependency scans, advisory data, and privacy.' },
+  documentation: { title: 'Documentation', description: 'Learn how to scan npm and Python projects with Veylix.' },
   privacy: { title: 'Privacy Policy', description: 'Learn how Veylix processes dependency scans and browser-local scan history.', noindex: true },
   terms: { title: 'Terms of Service', description: 'Review draft terms and limitations for the Veylix dependency scanner.', noindex: true },
   cookies: { title: 'Cookie Policy', description: 'Understand Veylix cookie behavior and browser-local scan history storage.' },
@@ -219,6 +222,10 @@ export const App: React.FC = () => {
             }}
             onOpenPreferences={() => setPreferencesOpen(true)}
           />
+        )}
+
+        {(route.page === 'faq' || route.page === 'documentation') && (
+          <GuideView page={route.page} />
         )}
 
         {(route.page === 'privacy' || route.page === 'terms' || route.page === 'cookies' || route.page === 'support') && (

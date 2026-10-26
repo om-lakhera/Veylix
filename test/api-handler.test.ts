@@ -44,4 +44,16 @@ describe('Universal API Handler', () => {
     expect(json.success).toBe(false);
     expect(json.error).toBeDefined();
   });
+
+  it('rejects unsupported scan fields with a safe response', async () => {
+    const res = await handleApiRequest(
+      'POST',
+      '/api/scan',
+      JSON.stringify({ requirementsTxt: 'requests==2.28.1\n', privateField: 'do not echo' })
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body).not.toContain('do not echo');
+    expect(JSON.parse(res.body).error).toBe('The request contains an unsupported field.');
+  });
 });

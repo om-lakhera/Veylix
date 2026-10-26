@@ -21,6 +21,17 @@ const FILE_PAYLOAD_FIELDS = new Set([
   'fetchMaintenanceHealth'
 ]);
 
+function getSafeScanError(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (
+    /^(?:Malformed package-lock\.json:|Unsupported package-lock\.json version:|A (?:package-lock\.json|requirements\.txt|poetry\.lock)|(?:package-lock\.json|requirements\.txt|poetry\.lock) exceeds maximum allowed size)/.test(message) ||
+    /^OSV API (?:rate limit encountered \(HTTP 429\)|server error \(HTTP \d+\)|request failed with HTTP \d+|request timed out after \d+ms|returned invalid non-object response|response missing "results" array|response alignment error: Sent \d+ package queries but received \d+ result items)/.test(message)
+  ) {
+    return message;
+  }
+  return 'Dependency analysis could not be completed. Check the submitted files and retry when the service is available.';
+}
+
 export interface FileScanPayload {
   packageJson?: string;
   packageLockJson?: string;
@@ -210,13 +221,11 @@ export class ScanService {
         },
         report
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         success: false,
         target: { type: 'file-upload', name: 'Manual Upload', scannedFiles: providedFiles },
-        error: err instanceof Error && !err.stack?.includes('node_modules')
-          ? err.message
-          : 'Dependency analysis failed unexpectedly. Please check the files and try again.'
+        error: getSafeScanError(err)
       };
     }
   }
@@ -299,13 +308,14 @@ export class ScanService {
         },
         report: scanResult.report
       };
-    } catch (err: any) {
-      const isGitHubError = err instanceof GitHubFetcherError;
+    } catch (err: unknown) {
       return {
         success: false,
         target: { type: 'github-repo', name: repoUrl, scannedFiles: [] },
-        error: err?.message || 'Failed to inspect GitHub repository.',
-        details: isGitHubError ? `Status: ${err.statusCode || 'N/A'}` : undefined
+        error: err instanceof GitHubFetcherError
+          ? err.message
+          : 'Could not retrieve public repository manifests. Check the repository reference and try again.',
+        details: err instanceof GitHubFetcherError ? `Status: ${err.statusCode || 'N/A'}` : undefined
       };
     }
   }

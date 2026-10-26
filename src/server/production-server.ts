@@ -4,6 +4,7 @@ import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MAX_SCAN_REQUEST_BYTES } from '../limits.js';
 import { handleApiRequest } from './api-handler.js';
+import { evaluateScanRateLimit } from './scan-rate-limiter.js';
 
 const MAX_CONCURRENT_SCANS = 4;
 let activeScanRequests = 0;
@@ -37,60 +38,17 @@ const spaRoutes = new Set([
 ]);
 
 const securityHeaders = {
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.osv.dev https://api.deps.dev; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.osv.dev https://api.deps.dev; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY'
+  'X-Frame-Options': 'DENY',
+  'Strict-Transport-Security': 'max-age=31536000',
+  'Permissions-Policy': 'camera=(), geolocation=(), microphone=(), payment=()'
 };
 
-const SCAN_RATE_LIMIT_WINDOW_MS = 60_000;
-const SCAN_RATE_LIMIT_MAX_REQUESTS = 20;
-const scanRateLimitStore = new Map<string, { count: number; windowStart: number }>();
-
-export function resetScanRateLimitState(): void {
-  scanRateLimitStore.clear();
-}
-
 export function getClientIp(request: import('node:http').IncomingMessage): string {
-  const trustProxyHeaders = ['1', 'true', 'yes', 'on'].includes(
-    process.env.TRUST_PROXY_HEADERS?.trim().toLowerCase() ?? ''
-  );
-  const forwarded = request.headers['x-forwarded-for'];
-  if (trustProxyHeaders && typeof forwarded === 'string' && forwarded.trim()) {
-    const firstForwarded = forwarded.split(',')[0]?.trim();
-    if (firstForwarded) return firstForwarded;
-  }
+  // Forwarded headers are untrusted unless a specific proxy chain is configured.
   return request.socket?.remoteAddress ?? 'unknown';
-}
-
-export function evaluateScanRateLimit(
-  request: import('node:http').IncomingMessage,
-  pathname: string
-): { allowed: boolean; retryAfterMs: number } {
-  if (request.method !== 'POST') {
-    return { allowed: true, retryAfterMs: 0 };
-  }
-  const isScanPath = pathname === '/api/scan' || pathname === '/api/scan/' ||
-    pathname === '/api/scan-github' || pathname === '/api/scan-github/';
-  if (!isScanPath) {
-    return { allowed: true, retryAfterMs: 0 };
-  }
-
-  const clientKey = getClientIp(request);
-  const now = Date.now();
-  const existing = scanRateLimitStore.get(clientKey);
-  if (!existing || now - existing.windowStart > SCAN_RATE_LIMIT_WINDOW_MS) {
-    scanRateLimitStore.set(clientKey, { count: 1, windowStart: now });
-    return { allowed: true, retryAfterMs: 0 };
-  }
-
-  if (existing.count >= SCAN_RATE_LIMIT_MAX_REQUESTS) {
-    const retryAfterMs = Math.max(1000, SCAN_RATE_LIMIT_WINDOW_MS - (now - existing.windowStart));
-    return { allowed: false, retryAfterMs };
-  }
-
-  existing.count += 1;
-  return { allowed: true, retryAfterMs: 0 };
 }
 
 function sendJson(response: import('node:http').ServerResponse, status: number, body: unknown): void {
@@ -257,6 +215,23 @@ const server = createServer((request, response) => {
         const isScanPost = request.method === 'POST' &&
           (url.pathname === '/api/scan' || url.pathname === '/api/scan/' ||
             url.pathname === '/api/scan-github' || url.pathname === '/api/scan-github/');
+        if (isScanPost) {
+          const limit = evaluateScanRateLimit(getClientIp(request));
+          if (!limit.allowed) {
+            request.resume();
+            response.writeHead(429, {
+              ...securityHeaders,
+              'Cache-Control': 'no-store',
+              'Content-Type': 'application/json; charset=utf-8',
+              'Retry-After': String(Math.ceil(limit.retryAfterMs / 1000))
+            });
+            response.end(JSON.stringify({
+              success: false,
+              error: 'Too many scan requests. Please wait before trying again.'
+            }));
+            return;
+          }
+        }
         if (isScanPost && activeScanRequests >= MAX_CONCURRENT_SCANS) {
           request.resume();
           response.writeHead(503, {
@@ -281,7 +256,7 @@ const server = createServer((request, response) => {
         await handleStatic(request, response, url.pathname);
       }
     } catch (error) {
-      console.error('Production request failed:', error);
+      console.error('Production request failed:', error instanceof Error ? error.name : 'Unknown error');
       if (!response.headersSent) {
         sendJson(response, 500, { success: false, error: 'The request could not be completed.' });
       } else {

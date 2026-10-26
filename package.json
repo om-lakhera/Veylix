@@ -3,16 +3,21 @@
   "version": "0.1.0",
   "description": "Developer-focused dependency health and risk prioritization platform",
   "type": "module",
+  "bin": {
+    "veylix": "./bin/veylix.js"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && tsc -p tsconfig.server.json && node scripts/generate-seo-files.mjs",
+    "build": "tsc && vite build && tsc -p tsconfig.server.json && tsc -p tsconfig.cli.json && node scripts/generate-seo-files.mjs",
     "build:engine": "tsc",
     "build:ui": "vite build",
+    "build:cli": "tsc -p tsconfig.cli.json",
     "preview": "vite preview",
     "start": "node server-dist/server/production-server.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:live": "vitest run --config vitest.live.config.ts"
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "veylix": "node ./bin/veylix.js"
   },
   "devDependencies": {
     "vitest": "^4.1.12"

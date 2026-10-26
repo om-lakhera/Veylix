@@ -15,6 +15,8 @@ export const Footer: React.FC<FooterProps> = ({ onOpenPreferences }) => {
         </div>
         <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
           <a href="/settings">About & Settings</a>
+          <a href="/faq">FAQ</a>
+          <a href="/documentation">Documentation</a>
           <a href="/privacy">Privacy</a>
           <a href="/terms">Terms</a>
           <a href="/cookies">Cookies & Storage</a>

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { executeFileScan, executeGitHubScan } from '../services/api-client.js';
 import { ScanTargetInfo } from '../types.js';
 import { AnalysisReport } from '../../types.js';
+import { emitScanEvent } from '../services/scan-events.js';
 import {
   MAX_MANIFEST_SIZE_BYTES,
   MAX_TOTAL_MANIFEST_SIZE_BYTES
@@ -196,6 +197,9 @@ urllib3==1.24.1
     setErrorMessage(null);
     scanLockRef.current = true;
     setIsScanning(true);
+    const startedAt = performance.now();
+    emitScanEvent('scan_started');
+    let terminalEventEmitted = false;
 
     const payload: Record<string, string | undefined> = {};
     for (const f of stagedFiles) {
@@ -213,13 +217,26 @@ urllib3==1.24.1
       });
 
       if (!res.success || !res.report) {
+        emitScanEvent('scan_failed', {
+          durationMs: performance.now() - startedAt,
+          failureCategory: 'scan_rejected'
+        });
+        terminalEventEmitted = true;
         setErrorMessage(res.error || 'Scan failed.');
         setIsScanning(false);
         return;
       }
 
+      emitScanEvent('scan_completed', { durationMs: performance.now() - startedAt });
+      terminalEventEmitted = true;
       onScanComplete(res.target, res.report);
     } catch (err) {
+      if (!terminalEventEmitted) {
+        emitScanEvent('scan_failed', {
+          durationMs: performance.now() - startedAt,
+          failureCategory: 'request_failed'
+        });
+      }
       setErrorMessage(err instanceof Error ? err.message : 'Unexpected scanning error.');
     } finally {
       scanLockRef.current = false;
@@ -238,6 +255,9 @@ urllib3==1.24.1
     setErrorMessage(null);
     scanLockRef.current = true;
     setIsScanning(true);
+    const startedAt = performance.now();
+    emitScanEvent('scan_started');
+    let terminalEventEmitted = false;
 
     try {
       const res = await executeGitHubScan({
@@ -246,13 +266,26 @@ urllib3==1.24.1
       });
 
       if (!res.success || !res.report) {
+        emitScanEvent('scan_failed', {
+          durationMs: performance.now() - startedAt,
+          failureCategory: 'scan_rejected'
+        });
+        terminalEventEmitted = true;
         setErrorMessage(res.error || 'Failed to scan repository.');
         setIsScanning(false);
         return;
       }
 
+      emitScanEvent('scan_completed', { durationMs: performance.now() - startedAt });
+      terminalEventEmitted = true;
       onScanComplete(res.target, res.report);
     } catch (err) {
+      if (!terminalEventEmitted) {
+        emitScanEvent('scan_failed', {
+          durationMs: performance.now() - startedAt,
+          failureCategory: 'request_failed'
+        });
+      }
       setErrorMessage(err instanceof Error ? err.message : 'Network error scanning GitHub repository.');
     } finally {
       scanLockRef.current = false;

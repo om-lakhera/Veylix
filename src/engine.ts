@@ -162,7 +162,7 @@ export class VeylixEngine {
 
       // 1. Map OSV vulnerabilities
       const vulnerabilities: VulnerabilityFinding[] = rawVulns.map((adv) => {
-        const finding = OSVClient.transformAdvisory(adv, pkg.name, pkg.version);
+        const finding = OSVClient.transformAdvisory(adv, pkg.name, pkg.version, pkg.ecosystem);
 
         switch (finding.severityLevel) {
           case 'CRITICAL':

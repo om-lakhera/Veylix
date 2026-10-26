@@ -1,6 +1,7 @@
 import React from 'react';
 import { ScanHistoryItem } from '../types.js';
 import { clearAllScanHistory, deleteScanFromHistory, downloadJsonFile } from '../services/storage.js';
+import { compareScans } from '../services/scan-comparison.js';
 
 interface ScanHistoryViewProps {
   history: ScanHistoryItem[];
@@ -16,6 +17,22 @@ export const ScanHistoryView: React.FC<ScanHistoryViewProps> = ({
   onNewScan
 }) => {
   const [storageError, setStorageError] = React.useState('');
+  const [previousScanId, setPreviousScanId] = React.useState(history[1]?.id ?? '');
+  const [currentScanId, setCurrentScanId] = React.useState(history[0]?.id ?? '');
+  const effectivePreviousScanId = history.some((item) => item.id === previousScanId)
+    ? previousScanId
+    : history[1]?.id ?? '';
+  const effectiveCurrentScanId = history.some((item) => item.id === currentScanId)
+    ? currentScanId
+    : history[0]?.id ?? '';
+  const previousScan = history.find((item) => item.id === effectivePreviousScanId);
+  const currentScan = history.find((item) => item.id === effectiveCurrentScanId);
+  const comparison = React.useMemo(
+    () => previousScan && currentScan && previousScan.id !== currentScan.id
+      ? compareScans(previousScan, currentScan)
+      : null,
+    [previousScan, currentScan]
+  );
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -90,6 +107,107 @@ export const ScanHistoryView: React.FC<ScanHistoryViewProps> = ({
           <strong>Privacy & Storage Notice:</strong> Scan reports are stored in this browser's <code>localStorage</code>. Storage can be unavailable, cleared, or evicted; reports are not backed up on a server.
         </div>
       </div>
+
+      <section className="card card-elevated scan-comparison" aria-labelledby="scan-comparison-title">
+        <div className="card-header">
+          <div>
+            <h2 className="card-title" id="scan-comparison-title">Compare saved scans</h2>
+            <p>Comparison is calculated in this browser from saved report data; it is not uploaded or persisted separately.</p>
+          </div>
+        </div>
+        {history.length < 2 ? (
+          <p>Save at least two scans in this browser to compare findings.</p>
+        ) : (
+          <>
+            <div className="comparison-selectors">
+              <label>
+                Earlier scan
+                <select className="input-text" value={effectivePreviousScanId} onChange={(event) => setPreviousScanId(event.target.value)}>
+                  {history.map((item) => (
+                    <option key={item.id} value={item.id}>{item.target.name} · {new Date(item.timestamp).toLocaleString()}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Later scan
+                <select className="input-text" value={effectiveCurrentScanId} onChange={(event) => setCurrentScanId(event.target.value)}>
+                  {history.map((item) => (
+                    <option key={item.id} value={item.id}>{item.target.name} · {new Date(item.timestamp).toLocaleString()}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {effectivePreviousScanId === effectiveCurrentScanId ? (
+              <p className="comparison-empty" role="status">Choose two different saved scans to compare.</p>
+            ) : comparison && (
+              <div className="comparison-results">
+                {comparison.ecosystemMismatch && (
+                  <div className="alert alert-warning" role="status">
+                    These scans use different ecosystems. Findings are marked uncertain; none are classified as new or resolved.
+                  </div>
+                )}
+                <dl className="comparison-summary">
+                  <div><dt>Vulnerable packages before</dt><dd>{comparison.previousVulnerablePackageCount}</dd></div>
+                  <div><dt>Vulnerable packages now</dt><dd>{comparison.currentVulnerablePackageCount}</dd></div>
+                  <div><dt>Package count change</dt><dd>{comparison.vulnerablePackageCountDelta > 0 ? '+' : ''}{comparison.vulnerablePackageCountDelta}</dd></div>
+                </dl>
+                {comparison.newFindings.length + comparison.resolvedFindings.length +
+                  comparison.remainingFindings.length + comparison.uncertainFindings.length === 0 ? (
+                  <p className="comparison-empty">Neither scan contains vulnerability findings to compare.</p>
+                ) : (
+                  <div className="table-container">
+                    <table className="data-table">
+                      <thead>
+                        <tr><th scope="col">Status</th><th scope="col">Package</th><th scope="col">Advisory</th><th scope="col">Severity</th><th scope="col">Version / details</th></tr>
+                      </thead>
+                      <tbody>
+                        {comparison.newFindings.map((finding, index) => (
+                          <tr key={`new-${finding.packageName}-${finding.advisoryId}-${index}`}>
+                            <td><span className="badge badge-high">New</span></td>
+                            <td><code>{finding.packageName}</code></td>
+                            <td>{finding.advisoryId}</td>
+                            <td>{finding.severity}</td>
+                            <td><code>{finding.packageVersion}</code></td>
+                          </tr>
+                        ))}
+                        {comparison.resolvedFindings.map((finding, index) => (
+                          <tr key={`resolved-${finding.packageName}-${finding.advisoryId}-${index}`}>
+                            <td><span className="badge badge-low">Resolved</span></td>
+                            <td><code>{finding.packageName}</code></td>
+                            <td>{finding.advisoryId}</td>
+                            <td>{finding.severity}</td>
+                            <td><code>{finding.packageVersion}</code></td>
+                          </tr>
+                        ))}
+                        {comparison.remainingFindings.map(({ previous, current, severityChanged, versionChanged }, index) => (
+                          <tr key={`remaining-${current.packageName}-${current.advisoryId}-${index}`}>
+                            <td><span className="badge badge-moderate">Remaining</span></td>
+                            <td><code>{current.packageName}</code></td>
+                            <td>{current.advisoryId || previous.advisoryId}</td>
+                            <td>{severityChanged ? `${previous.severity} → ${current.severity}` : current.severity}</td>
+                            <td>{versionChanged
+                              ? <><code>{previous.packageVersion}</code> → <code>{current.packageVersion}</code></>
+                              : <code>{current.packageVersion}</code>}</td>
+                          </tr>
+                        ))}
+                        {comparison.uncertainFindings.map(({ side, finding, reason }, index) => (
+                          <tr key={`uncertain-${side}-${finding.packageName}-${index}`}>
+                            <td><span className="badge badge-neutral">Uncertain</span></td>
+                            <td><code>{finding.packageName}</code></td>
+                            <td>{finding.advisoryId || 'Identifier unavailable'}</td>
+                            <td>{finding.severity}</td>
+                            <td><code>{finding.packageVersion}</code><br />{reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </section>
 
       {history.length === 0 ? (
         <div className="card card-elevated" style={{ textAlign: 'center', padding: '64px 24px' }}>

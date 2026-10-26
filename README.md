@@ -33,6 +33,30 @@ npm start
 
 There is no configured lint or formatting script.
 
+## CLI usage
+
+Veylix exposes a minimal command-line interface that reuses the same TypeScript scanning engine as the web app. The CLI reads a supported manifest or project directory, emits JSON or text output, and exits with a deterministic status code for automation.
+
+```bash
+# Scan a package-lock.json with a strict high-severity threshold
+node ./bin/veylix.js scan --file ./package-lock.json --ecosystem npm --threshold high --format json
+
+# Scan a Python requirements.txt project and fail only on low-or-worse advisories
+node ./bin/veylix.js scan --file ./requirements.txt --ecosystem pypi --threshold low
+```
+
+Exit codes:
+
+- `0`: scan succeeded and the configured threshold was not exceeded.
+- `1`: scan succeeded, but a vulnerability met or exceeded the configured threshold.
+- `2`: invalid arguments, missing input, or scanner execution failure.
+
+Supported CLI inputs include a direct path to `package-lock.json`, `package.json` with a sibling lockfile, `requirements.txt`, `poetry.lock`, or a project directory containing one of those supported files. The CLI does not execute repository code or shell commands: it parses static dependency files and sends only package names and versions to the OSV API, plus optional package-health queries to deps.dev when enabled by the underlying scan engine.
+
+## GitHub Actions example
+
+The repository includes a sample workflow in [`.github/workflows/veylix.yml`](./.github/workflows/veylix.yml). It checks out a project, installs dependencies, runs the local Veylix CLI, and fails the workflow when the configured vulnerability threshold is reached. This avoids any mandatory hosted Veylix account or paid service and keeps the scan execution local to the repository checkout.
+
 ## Environment configuration
 
 | Variable | Required | Purpose |
@@ -45,15 +69,15 @@ There are no configured secrets. Do not put credentials in `VITE_*` variables: V
 
 ## Production deployment
 
-The production backend is a long-running Node.js HTTP server, not a static-only site or a preconfigured Cloudflare Worker/Pages function. Select a Node-compatible host that can run the build output, keep the server process available, provide outbound HTTPS access, and route public HTTPS traffic to the process. No hosting provider or domain is selected/configured here, and no deployment has been performed.
+The production backend is a long-running Node.js HTTP server, not a static-only site or a preconfigured Cloudflare Worker/Pages function. It requires a Node-compatible host that can run the build output, keep the server process available, provide outbound HTTPS access, and route public HTTPS traffic to the process. The current audit target supplied by the operator is `https://veylix-0dzz.onrender.com/`; Render service settings are not stored in this repository.
 
 1. Select a Node.js 20+ hosting environment and verify its current price, quotas, request duration, and outbound-network rules. Do not assume a free plan or unlimited usage.
-2. Configure Render's build command as `npm install && npm run build`. The packages required to compile and bundle the app are declared in `dependencies`, so this works even when Render sets `NODE_ENV=production` and omits `devDependencies`. Set `VITE_SITE_URL` to the actual verified HTTPS origin during this build if canonical URLs and a sitemap are desired.
+2. Configure Render's build command as `npm ci && npm run build`. The packages required to compile and bundle the app are declared in `dependencies`, so this works even when Render sets `NODE_ENV=production` and omits `devDependencies`. Set `VITE_SITE_URL` to the actual verified HTTPS origin during this build if canonical URLs and a sitemap are desired.
 3. Configure the start command as `npm start`; supply the platform's `PORT`. Set `HOST=0.0.0.0` when the host requires a container-wide bind. Terminate TLS at the host or its trusted reverse proxy and forward requests for both SPA paths and `/api/*` to this same process.
 4. Verify `GET /api/health`, `GET /`, a direct deep link such as `/privacy`, `GET /robots.txt`, and `GET /sitemap.xml` when a production origin is configured. Submit a file scan only when approved for an external upstream lookup.
 5. Retain the last known-good build/release according to the chosen provider and roll back by restoring that release if verification fails. Provider-specific release, backup, and retention controls must be configured by the operator.
 
-The server limits JSON request bodies, supported manifest size, request receive time, headers, and active scans per process. It is not an account system and has no durable, distributed per-user rate limiter. If exposing the API publicly, configure suitable request/rate limits at a trusted hosting edge or reverse proxy and monitor upstream usage. The process-level concurrency limit does not protect multiple server instances as one shared quota.
+The server limits JSON request bodies, supported manifest size, request receive time, headers, and active scans per process. Production scan POST requests are limited to 20 per minute per socket peer using an in-memory fixed window; the table is bounded and resets on restart. This is not an account system or a durable, distributed per-user limiter. The server intentionally does not trust forwarded client-IP headers; behind a proxy, multiple users may share the proxy's rate-limit bucket. Configure suitable edge limits for a multi-instance deployment and monitor upstream usage. The process-level concurrency and rate limits are not shared across instances.
 
 Static assets receive cache headers; API responses are `no-store`. Scan API calls and external OSV, deps.dev, and GitHub requests require outbound connectivity. GitHub scanning only fetches supported dependency manifests from `raw.githubusercontent.com`, rejects redirects, and does not clone or execute repository code.
 
@@ -68,8 +92,8 @@ The workspace includes a VS Code MCP server entry for Render's hosted server in 
 - A failed required OSV lookup fails the scan; it is not represented as zero vulnerabilities. Optional maintenance signals may be unavailable and are reported separately.
 - Scan history and reports are held in browser `localStorage` (up to 25 entries). They do not sync between devices and are not backed up server-side; clearing or eviction of browser data removes them. A completed report may be unavailable after reload if browser storage failed.
 - No analytics or advertising cookies are configured. The cookie/storage dialog describes essential local report storage; it does not save fictitious optional-consent choices.
-- The API does not intentionally persist manifests or scan history. Hosting providers and external upstream services may process request metadata or retain operational logs under their own policies.
-- No operator identity, support email, legal jurisdiction, hosting provider, production domain, backup policy, or legal approval is configured. Privacy/Terms are drafts and require owner confirmation and qualified legal review before public launch.
+- The API does not intentionally persist manifests or scan history. Hosting providers and external upstream services may process request metadata or retain operational logs under their own policies. The browser dispatches minimal scan lifecycle custom events within the current page only; no analytics provider, listener, persistence, or event network destination is configured.
+- No operator identity, private support/privacy contact, legal jurisdiction, Render service configuration, custom domain, backup policy, or legal approval is configured in this repository. Privacy/Terms are drafts and require owner confirmation and qualified legal review before public launch.
 - Veylix does not guarantee complete advisory coverage, exploitability assessment, safe dependencies, or compatibility of suggested upgrades.
 
 ## Project documentation

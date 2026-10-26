@@ -9,6 +9,8 @@ describe('public page routes', () => {
     ['/dependencies', 'dependencies'],
     ['/advisories', 'advisories'],
     ['/settings', 'about'],
+    ['/faq', 'faq'],
+    ['/documentation', 'documentation'],
     ['/privacy', 'privacy'],
     ['/terms', 'terms'],
     ['/cookies', 'cookies'],

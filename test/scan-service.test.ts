@@ -56,5 +56,16 @@ describe('ScanService', () => {
 
     expect(res.success).toBe(false);
     expect(res.error).toBeDefined();
+    expect(res.error).not.toContain('OSV network down');
+  });
+
+  it('does not return unexpected GitHub fetch errors to the client', async () => {
+    const service = new ScanService({}, vi.fn().mockRejectedValue(new Error('upstream response secret')));
+
+    const res = await service.scanGitHub({ repoUrl: 'owner/repo' });
+
+    expect(res.success).toBe(false);
+    expect(res.error).toContain('Network error fetching');
+    expect(res.error).not.toContain('upstream response secret');
   });
 });

@@ -8,7 +8,7 @@ interface PolicyViewProps {
 const pageCopy = {
   privacy: {
     title: 'Privacy Policy',
-    intro: 'This draft describes the behavior visible in this Veylix build. The operator identity, jurisdiction, contact, hosting logs, and retention terms have not been configured and require review before public launch.'
+    intro: 'This draft describes the behavior visible in this Veylix build. The operator identity, jurisdiction, and private privacy contact are not configured; hosting log settings and retention have not been verified. The service owner must complete and review these details before public launch.'
   },
   terms: {
     title: 'Terms of Service',
@@ -33,20 +33,21 @@ export const PolicyView: React.FC<PolicyViewProps> = ({ page }) => (
     {page === 'privacy' && (
       <>
         <section><h2>Information processed for a scan</h2>
-          <p>When you upload a dependency manifest, its text is sent to the same-origin scan API when that API is available. If the API request cannot be reached, the file-scan client can run the existing engine in your browser instead. The parser extracts package names and versions; the engine sends those package identifiers to the public OSV vulnerability API. If you enable maintenance checks, package identifiers are also used to request package-health data from deps.dev. Uploaded manifest text is not sent to OSV or deps.dev.</p>
-          <p>For GitHub scans, the submitted public repository reference is sent to the scan API, which fetches supported manifest files from GitHub's raw-content host. The engine then queries OSV and, optionally, deps.dev. Do not submit private repository URLs or files containing secrets.</p>
+          <p>When you upload a dependency manifest, its text is sent to Veylix's same-origin scan API when that API is reachable. If the API cannot be reached or returns 404, the file-scan client can run the existing engine in your browser instead. The parser extracts package names and versions; those identifiers and versions are sent to the OSV vulnerability API. Maintenance checks are enabled by default in the scan form and can be turned off; when enabled, package identifiers are also used to request package-health data from deps.dev. Manifest text itself is not sent to OSV or deps.dev.</p>
+          <p>For GitHub scans, the repository reference you submit is sent to Veylix's API. The server fetches supported manifests from GitHub's raw-content host, then queries OSV and, optionally, deps.dev. Only public GitHub repositories are supported; do not submit private repository URLs or files containing secrets.</p>
         </section>
         <section><h2>Browser storage and deletion</h2>
-          <p>Successful scan reports are saved in this browser's local storage. History keeps at most 25 reports; saving another report can replace the oldest one. Reports include scan metadata, package versions, findings, and target names. You can delete entries in Scan History, clear all saved history in Settings, or clear site data. Browser storage can also be unavailable or evicted.</p>
+          <p>Successful scan reports are saved in this browser's local storage. History keeps at most 25 reports; when full, saving another report removes the oldest one. Reports include scan time, target/repository name, selected manifest names, package names and versions, and findings. You can delete entries in Scan History, clear all saved history in Settings, or clear this site's browser data. Browser storage can also be unavailable or evicted.</p>
           <p>A scan made while history storage is unavailable is not retained across reloads. Veylix does not currently provide an account or server-side scan-history service.</p>
         </section>
         <section><h2>External services and operational data</h2>
-          <p>Scanning may contact GitHub (public repository manifests), OSV (package vulnerability queries), and deps.dev (optional package-health queries). These services receive the request data necessary for their respective lookup and are governed by their own policies. The interface uses system fonts and does not request external font assets.</p>
-          <p>The API implementation does not intentionally log manifest contents. The deployment host, network providers, and external services may process request metadata or retain operational logs under their own policies. The production host and its log-retention settings are not specified here.</p>
+          <p>Scanning can contact GitHub (public repository manifests), OSV (package vulnerability queries), and deps.dev (optional package-health queries). These services receive the request data needed for their respective lookups and are governed by their own policies. The interface uses system fonts and does not request external font assets.</p>
+          <p>The application does not intentionally persist submitted manifests or scan reports on its server and does not log request bodies. The hosting provider and network providers may process request metadata such as IP addresses, request paths, timestamps, and status codes under their own policies. The deployed URL uses Render; the exact production request-log configuration and retention period have not been verified. No server-side deletion process is configured because the application does not intentionally retain scan submissions.</p>
         </section>
-        <section><h2>Your choices and contact</h2>
-          <p>You can choose whether to request optional maintenance checks, delete locally saved reports, and avoid using the scan service. No optional analytics or marketing cookies are currently installed, so there are no optional tracking categories to opt into.</p>
-          <p>Operator/contact details and applicable jurisdiction are not configured. The service operator must supply a verified contact and complete a privacy/legal review before publication.</p>
+        <section><h2>Security, event signals, and contact</h2>
+          <p>Production traffic is served over HTTPS. The API enforces request and manifest size limits, limits simultaneous scans and scan request rates per network peer, and restricts GitHub retrieval to supported public manifest files without following redirects. These controls reduce risk but do not guarantee security. The source code is available in the linked project repository.</p>
+          <p>The browser emits minimal scan-started, scan-completed, and scan-failed custom events to the current page only. No event listener, analytics provider, persistent identifier, or network destination is configured, so these signals are not stored or transmitted by Veylix.</p>
+          <p>You can decline optional maintenance checks, delete locally saved reports, or avoid using the scan service. No analytics or advertising scripts or cookies are installed. No private privacy contact is configured. For non-sensitive concerns, use the public project repository's issue tracker; do not post manifests, repository URLs you wish to keep private, or personal information there. The service owner should provide a private privacy contact before public launch.</p>
         </section>
       </>
     )}
@@ -54,14 +55,14 @@ export const PolicyView: React.FC<PolicyViewProps> = ({ page }) => (
     {page === 'terms' && (
       <>
         <section><h2>Permitted use and authorization</h2>
-          <p>Only submit dependency files you are authorized to use and scan. Only request scans of public GitHub repositories when you are authorized to access their public contents. Do not use the service to interfere with third-party systems, evade access controls, or submit unlawful or sensitive material.</p>
+          <p>Only submit dependency files you are authorized to use and scan. Only request scans of public GitHub repositories and their contents. Do not submit passwords, access tokens, private repository URLs, or other secrets; do not use the service to interfere with third-party systems, evade access controls, or submit unlawful or sensitive material. You are responsible for retaining your own copies of reports you need.</p>
         </section>
         <section><h2>Service limitations</h2>
           <p>Veylix matches resolved package versions against data returned by OSV and optionally obtains package-health signals from deps.dev. Coverage, metadata, severity, affected ranges, and fixes depend on those upstream sources and the files successfully parsed. Missing data is not proof that a package is safe. Services and external APIs may be unavailable, rate limited, or changed.</p>
           <p>Recommendations are informational. Review upstream advisories, test upgrades, and make your own risk and compatibility decisions. Veylix is not a substitute for a security review or professional advice.</p>
         </section>
         <section><h2>Disclaimer and review</h2>
-          <p>This draft is not legal advice and has not been reviewed for any jurisdiction. Availability, warranty, liability, governing law, effective date, and operator identity must be completed by the service operator and reviewed by qualified counsel before use.</p>
+          <p>Veylix is provided for informational dependency analysis. Results may be incomplete, delayed, or inaccurate, and availability is not guaranteed. You remain responsible for reviewing findings, validating upgrades, and deciding what actions to take. This draft is not legal advice and has not been reviewed for any jurisdiction. The operator identity, effective date, contact details, governing law, and any terms required for the service must be supplied by the owner and reviewed by qualified counsel before publication.</p>
         </section>
       </>
     )}
@@ -73,7 +74,7 @@ export const PolicyView: React.FC<PolicyViewProps> = ({ page }) => (
         </section>
         <section><h2>Browser local storage</h2>
           <p>Scan reports are stored in local storage to support scan history and reopening reports. This storage is essential to the existing client-side feature and is not an optional analytics or marketing preference. You can delete reports in Scan History or Settings, or clear this site's browser data.</p>
-          <p>A cookie-preferences dialog is available from the footer. Since no optional tracking categories are configured, it explains the current storage behavior rather than presenting fictitious consent switches.</p>
+          <p>A cookie-preferences dialog is available from the footer. Since no optional tracking categories are configured, it explains the current storage behavior rather than presenting fictitious consent switches. Scan event signals are dispatched only within the current page and are neither stored nor sent to a provider.</p>
         </section>
       </>
     )}

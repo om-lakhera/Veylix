@@ -7,6 +7,8 @@ const routePaths: Partial<Record<ActiveTab, string>> = {
   dependencies: '/dependencies',
   advisories: '/advisories',
   about: '/settings',
+  faq: '/faq',
+  documentation: '/documentation',
   privacy: '/privacy',
   terms: '/terms',
   cookies: '/cookies',

@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { AnalysisReport, AnalyzedPackage, VulnerabilityFinding } from '../../types.js';
 import { ScanTargetInfo, calculateRiskScore } from '../types.js';
 import { downloadJsonFile } from '../services/storage.js';
+import { copyUpgradeCommand, generateUpgradeCommand } from '../services/remediation.js';
+import { buildDependencyGraph } from '../services/dependency-graph.js';
 
 interface ScanResultsViewProps {
   target: ScanTargetInfo;
@@ -13,6 +15,33 @@ type SeverityFilter = 'ALL' | 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW' | 'MAINTE
 type DependencyScopeFilter = 'ALL' | 'DIRECT' | 'TRANSITIVE';
 type SortOption = 'SEVERITY' | 'PACKAGE_NAME' | 'FIX_AVAILABLE';
 
+const CopyUpgradeCommand: React.FC<{ command: string }> = ({ command }) => {
+  const [status, setStatus] = useState('');
+
+  const copyCommand = async () => {
+    const result = await copyUpgradeCommand(command, navigator.clipboard);
+    if (result === 'unavailable') {
+      setStatus('Copy is unavailable in this browser context. Select and copy the command manually.');
+      return;
+    }
+    if (result === 'copied') {
+      setStatus('Command copied.');
+    } else {
+      setStatus('Could not copy the command. Select and copy it manually.');
+    }
+  };
+
+  return (
+    <div className="upgrade-command">
+      <code>{command}</code>
+      <button className="btn btn-secondary btn-sm" type="button" onClick={copyCommand}>
+        Copy command
+      </button>
+      <span className="copy-status" role="status" aria-live="polite">{status}</span>
+    </div>
+  );
+};
+
 export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
   target,
   report,
@@ -23,10 +52,11 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
   const [scopeFilter, setScopeFilter] = useState<DependencyScopeFilter>('ALL');
   const [sortOption, setSortOption] = useState<SortOption>('SEVERITY');
   const [expandedPkgKeys, setExpandedPkgKeys] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<'vulnerabilities' | 'maintenance' | 'recommendations' | 'all-packages'>('vulnerabilities');
+  const [activeTab, setActiveTab] = useState<'vulnerabilities' | 'maintenance' | 'recommendations' | 'dependencies' | 'all-packages'>('vulnerabilities');
 
   const risk = calculateRiskScore(report);
   const { summary } = report;
+  const dependencyGraph = useMemo(() => buildDependencyGraph(report), [report]);
 
   const toggleExpand = (key: string) => {
     setExpandedPkgKeys((prev) => {
@@ -272,6 +302,13 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
           onClick={() => setActiveTab('maintenance')}
         >
           Maintenance Health ({maintenanceRiskList.length} risks)
+        </button>
+
+        <button
+          className={`tab-btn ${activeTab === 'dependencies' ? 'active' : ''}`}
+          onClick={() => setActiveTab('dependencies')}
+        >
+          Dependency Explorer
         </button>
 
         <button
@@ -568,7 +605,11 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Critical / High CVEs */}
               {vulnerableList.map((pkg) => {
-                const fixCandidate = pkg.vulnerabilities.find((v) => Boolean(v.fixedVersion));
+                const fixCandidates = pkg.vulnerabilities.filter((finding) => Boolean(finding.fixedVersion));
+                const fixCandidate = fixCandidates.find((finding) =>
+                  Boolean(generateUpgradeCommand(pkg.ecosystem, pkg.name, finding.fixedVersion).command)
+                ) ?? fixCandidates[0];
+                const upgrade = generateUpgradeCommand(pkg.ecosystem, pkg.name, fixCandidate?.fixedVersion);
                 return (
                   <div
                     key={`${pkg.name}@${pkg.version}`}
@@ -600,15 +641,23 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
                       {pkg.vulnerabilities.map((v) => `${v.advisoryId}: ${v.actionableRecommendation}`).join(' ')}
                     </p>
 
-                    {fixCandidate?.fixedVersion ? (
-                      <div style={{ padding: '8px 12px', backgroundColor: 'var(--bg-canvas)', borderRadius: '4px', border: '1px solid var(--border-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--severity-low)' }}>
-                        {pkg.ecosystem === 'npm'
-                          ? `npm install ${pkg.name}@^${fixCandidate.fixedVersion}`
-                          : `pip install "${pkg.name}>=${fixCandidate.fixedVersion}"`}
+                    {fixCandidate?.fixedVersion && upgrade.command ? (
+                      <div>
+                        <p className="remediation-note">
+                          OSV records <code>{fixCandidate.fixedVersion}</code> as a fixed version for advisory{' '}
+                          <code>{fixCandidate.advisoryId}</code>. Review and test this exact-version suggestion. It does
+                          not imply that all advisories or dependency paths for this package are resolved.
+                        </p>
+                        <CopyUpgradeCommand command={upgrade.command} />
                       </div>
+                    ) : fixCandidate?.fixedVersion ? (
+                      <p className="remediation-note" role="status">
+                        A fixed version is recorded, but no safe command can be generated: {upgrade.reason}
+                      </p>
                     ) : (
-                      <div style={{ fontSize: '0.82rem', color: 'var(--severity-moderate)' }}>
-                        ⚠ No confirmed patch version published yet. Consider isolating or finding an alternative dependency.
+                      <div className="remediation-note" role="status">
+                        No verified fixed version was found in the returned advisory data. Review the advisory and
+                        assess mitigations; Veylix will not guess an upgrade target.
                       </div>
                     )}
                   </div>
@@ -644,6 +693,92 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {activeTab === 'dependencies' && (
+        <section className="card card-elevated dependency-explorer" aria-labelledby="dependency-explorer-title">
+          <div className="card-header">
+            <div>
+              <h2 className="card-title" id="dependency-explorer-title">Dependency relationships</h2>
+              <p className="dependency-explorer-intro">
+                Relationships are shown only when a lockfile path names each package with an exact version.
+                Package scope labels alone are not used to infer parent-child edges.
+              </p>
+            </div>
+          </div>
+
+          {dependencyGraph.truncated && (
+            <p className="alert alert-warning" role="status">
+              The explorer reached its processing limit. Displayed paths may be incomplete.
+            </p>
+          )}
+
+          {!dependencyGraph.available ? (
+            <div className="dependency-graph-unavailable" role="status">
+              <h3>No reliable parent-child paths available</h3>
+              <p>
+                This scan contains package inventory data, but its parser did not provide version-qualified
+                dependency paths that can be safely reconstructed as relationships. Direct/transitive labels
+                remain parser metadata and are not expanded into a graph here.
+              </p>
+              {dependencyGraph.nodes.some((node) => node.isVulnerable && node.isDirect) && (
+                <ul>
+                  {dependencyGraph.nodes.filter((node) => node.isVulnerable && node.isDirect).map((node) => (
+                    <li key={node.id}>Direct vulnerable dependency: <code>{node.name}@{node.version}</code></li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <>
+              {dependencyGraph.cycleDetected && (
+                <p className="alert alert-warning" role="status">
+                  A cycle was present in the relationship data. Traversal stopped at visited nodes.
+                </p>
+              )}
+              <h3 className="dependency-section-title">Verified parent-child relationships</h3>
+              <div className="table-container">
+                <table className="data-table">
+                  <thead><tr><th scope="col">Parent</th><th scope="col">Dependency</th><th scope="col">Status</th></tr></thead>
+                  <tbody>
+                    {dependencyGraph.edges.map((edge) => {
+                      const parent = dependencyGraph.nodes.find((node) => node.id === edge.from);
+                      const child = dependencyGraph.nodes.find((node) => node.id === edge.to);
+                      if (!parent || !child) return null;
+                      return (
+                        <tr key={`${edge.from}->${edge.to}`}>
+                          <td><code>{parent.name}@{parent.version}</code></td>
+                          <td><code>{child.name}@{child.version}</code></td>
+                          <td>{child.isVulnerable ? <span className="badge badge-critical">Vulnerable</span> : 'Resolved package'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <h3 className="dependency-section-title">Paths to vulnerable dependencies</h3>
+              {dependencyGraph.vulnerablePaths.length === 0 ? (
+                <p>No direct-to-vulnerable paths were reconstructed from the available exact-version paths.</p>
+              ) : (
+                <ul className="vulnerability-path-list">
+                  {dependencyGraph.vulnerablePaths.map((path, index) => (
+                    <li key={`${path.map((node) => node.id).join('>')}-${index}`}>
+                      <ol aria-label={`Vulnerability path ${index + 1}`}>
+                        {path.map((node) => (
+                          <li key={node.id}>
+                            <code>{node.name}@{node.version}</code>
+                            <span className="badge badge-neutral">{node.isDirect ? 'Direct' : 'Transitive'}</span>
+                            {node.isVulnerable && <span className="badge badge-critical">Vulnerable</span>}
+                          </li>
+                        ))}
+                      </ol>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </section>
       )}
 
       {/* TAB 3: MAINTENANCE HEALTH */}
