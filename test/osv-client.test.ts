@@ -84,6 +84,15 @@ describe('OSVClient & Advisory Transformer', () => {
     );
   });
 
+  it('preserves the OSV advisory modified timestamp for timelines', () => {
+    const finding = OSVClient.transformAdvisory({
+      id: 'GHSA-timeline',
+      modified: '2024-06-01T12:00:00Z'
+    }, 'test-lib', '1.0.0');
+
+    expect(finding.modified).toBe('2024-06-01T12:00:00Z');
+  });
+
   it('handles advisory with no fixed version without inventing a patch', () => {
     const advisory = {
       id: 'GHSA-no-fix-recorded',

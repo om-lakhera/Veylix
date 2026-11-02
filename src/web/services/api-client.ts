@@ -61,7 +61,8 @@ export async function executeFileScan(payload: FileScanPayload): Promise<ScanRes
     requirementsTxt,
     poetryLock,
     pyprojectToml,
-    fetchMaintenanceHealth = false
+    fetchMaintenanceHealth = false,
+    fetchExploitIntelligence = false
   } = payload;
 
   const providedFiles: string[] = [];
@@ -80,7 +81,7 @@ export async function executeFileScan(payload: FileScanPayload): Promise<ScanRes
   }
 
   try {
-    const engine = new VeylixEngine({ fetchMaintenanceHealth });
+    const engine = new VeylixEngine({ fetchMaintenanceHealth, fetchExploitIntelligence });
     let report;
     let scannedFiles: string[];
 

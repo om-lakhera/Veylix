@@ -25,6 +25,7 @@ export const NewScanView: React.FC<NewScanViewProps> = ({ onScanComplete }) => {
   const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
   const [githubUrl, setGithubUrl] = useState('');
   const [includeMaintenance, setIncludeMaintenance] = useState(true);
+  const [includeExploitIntelligence, setIncludeExploitIntelligence] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -201,7 +202,7 @@ urllib3==1.24.1
     emitScanEvent('scan_started');
     let terminalEventEmitted = false;
 
-    const payload: Record<string, string | undefined> = {};
+    const payload: Record<string, string | boolean | undefined> = {};
     for (const f of stagedFiles) {
       if (f.name === 'package-lock.json') payload.packageLockJson = f.content;
       if (f.name === 'package.json') payload.packageJson = f.content;
@@ -213,7 +214,8 @@ urllib3==1.24.1
     try {
       const res = await executeFileScan({
         ...payload,
-        fetchMaintenanceHealth: includeMaintenance
+        fetchMaintenanceHealth: includeMaintenance,
+        fetchExploitIntelligence: includeExploitIntelligence
       });
 
       if (!res.success || !res.report) {
@@ -262,7 +264,8 @@ urllib3==1.24.1
     try {
       const res = await executeGitHubScan({
         repoUrl: githubUrl.trim(),
-        fetchMaintenanceHealth: includeMaintenance
+        fetchMaintenanceHealth: includeMaintenance,
+        fetchExploitIntelligence: includeExploitIntelligence
       });
 
       if (!res.success || !res.report) {
@@ -464,6 +467,20 @@ urllib3==1.24.1
               </div>
             </label>
 
+            <label className="checkbox-toggle" style={{ marginBottom: '20px' }}>
+              <input
+                type="checkbox"
+                checked={includeExploitIntelligence}
+                onChange={(e) => setIncludeExploitIntelligence(e.target.checked)}
+              />
+              <div className="checkbox-toggle-text">
+                <span className="checkbox-toggle-title">Include EPSS and CISA Known Exploited Vulnerabilities data</span>
+                <span className="checkbox-toggle-desc">
+                  Queries FIRST.org EPSS and the CISA KEV catalog for matching CVE identifiers. These public sources are optional and may be unavailable.
+                </span>
+              </div>
+            </label>
+
             <button
               className="btn btn-primary"
               style={{ width: '100%', padding: '14px', fontSize: '0.95rem' }}
@@ -525,6 +542,20 @@ urllib3==1.24.1
               <span className="checkbox-toggle-title">Include OpenSSF Scorecard & deps.dev Maintenance Vitality Check</span>
               <span className="checkbox-toggle-desc">
                 Retrieves project Scorecard vitality indicators for identified direct dependencies.
+              </span>
+            </div>
+          </label>
+
+          <label className="checkbox-toggle" style={{ marginBottom: '24px' }}>
+            <input
+              type="checkbox"
+              checked={includeExploitIntelligence}
+              onChange={(e) => setIncludeExploitIntelligence(e.target.checked)}
+            />
+            <div className="checkbox-toggle-text">
+              <span className="checkbox-toggle-title">Include EPSS and CISA Known Exploited Vulnerabilities data</span>
+              <span className="checkbox-toggle-desc">
+                Queries FIRST.org and CISA for matching CVE identifiers. These public sources are optional and may be unavailable.
               </span>
             </div>
           </label>

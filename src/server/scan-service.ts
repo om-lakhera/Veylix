@@ -18,7 +18,8 @@ const FILE_PAYLOAD_FIELDS = new Set([
   'requirementsTxt',
   'poetryLock',
   'pyprojectToml',
-  'fetchMaintenanceHealth'
+  'fetchMaintenanceHealth',
+  'fetchExploitIntelligence'
 ]);
 
 function getSafeScanError(error: unknown): string {
@@ -39,11 +40,13 @@ export interface FileScanPayload {
   poetryLock?: string;
   pyprojectToml?: string;
   fetchMaintenanceHealth?: boolean;
+  fetchExploitIntelligence?: boolean;
 }
 
 export interface GitHubScanPayload {
   repoUrl: string;
   fetchMaintenanceHealth?: boolean;
+  fetchExploitIntelligence?: boolean;
 }
 
 export interface ScanResponse {
@@ -90,15 +93,20 @@ export class ScanService {
       };
     }
 
-    if (input.fetchMaintenanceHealth !== undefined && typeof input.fetchMaintenanceHealth !== 'boolean') {
+    if (
+      (input.fetchMaintenanceHealth !== undefined && typeof input.fetchMaintenanceHealth !== 'boolean') ||
+      (input.fetchExploitIntelligence !== undefined && typeof input.fetchExploitIntelligence !== 'boolean')
+    ) {
       return {
         success: false,
         target: { type: 'file-upload', name: 'Manual Upload', scannedFiles: [] },
-        error: 'fetchMaintenanceHealth must be a boolean.'
+        error: 'Optional scan enrichment settings must be booleans.'
       };
     }
 
-    const fileFields = [...FILE_PAYLOAD_FIELDS].filter((field) => field !== 'fetchMaintenanceHealth');
+    const fileFields = [...FILE_PAYLOAD_FIELDS].filter(
+      (field) => field !== 'fetchMaintenanceHealth' && field !== 'fetchExploitIntelligence'
+    );
     let totalBytes = 0;
     for (const field of fileFields) {
       const value = input[field];
@@ -134,7 +142,8 @@ export class ScanService {
       requirementsTxt,
       poetryLock,
       pyprojectToml,
-      fetchMaintenanceHealth = false
+      fetchMaintenanceHealth = false,
+      fetchExploitIntelligence = false
     } = payload;
 
     const providedFiles: string[] = [];
@@ -175,7 +184,8 @@ export class ScanService {
 
       const engine = new VeylixEngine({
         ...this.engineOptions,
-        fetchMaintenanceHealth
+        fetchMaintenanceHealth,
+        fetchExploitIntelligence
       });
 
       let report: AnalysisReport;
@@ -242,22 +252,28 @@ export class ScanService {
       };
     }
     const input = payload as unknown as Record<string, unknown>;
-    if (Object.keys(input).some((key) => key !== 'repoUrl' && key !== 'fetchMaintenanceHealth')) {
+    if (Object.keys(input).some((key) =>
+      key !== 'repoUrl' && key !== 'fetchMaintenanceHealth' && key !== 'fetchExploitIntelligence'
+    )) {
       return {
         success: false,
         target: { type: 'github-repo', name: 'GitHub Scan', scannedFiles: [] },
         error: 'The request contains an unsupported field.'
       };
     }
-    if (input.fetchMaintenanceHealth !== undefined && typeof input.fetchMaintenanceHealth !== 'boolean') {
+    if (
+      (input.fetchMaintenanceHealth !== undefined && typeof input.fetchMaintenanceHealth !== 'boolean') ||
+      (input.fetchExploitIntelligence !== undefined && typeof input.fetchExploitIntelligence !== 'boolean')
+    ) {
       return {
         success: false,
         target: { type: 'github-repo', name: 'GitHub Scan', scannedFiles: [] },
-        error: 'fetchMaintenanceHealth must be a boolean.'
+        error: 'Optional scan enrichment settings must be booleans.'
       };
     }
     const repoUrl = input.repoUrl;
     const fetchMaintenanceHealth = input.fetchMaintenanceHealth === true;
+    const fetchExploitIntelligence = input.fetchExploitIntelligence === true;
 
     if (!repoUrl || typeof repoUrl !== 'string') {
       return {
@@ -283,7 +299,8 @@ export class ScanService {
       // 2. Pass discovered manifests to scanFiles
       const scanResult = await this.scanFiles({
         ...discovered.manifestContents,
-        fetchMaintenanceHealth
+        fetchMaintenanceHealth,
+        fetchExploitIntelligence
       });
 
       if (!scanResult.success) {

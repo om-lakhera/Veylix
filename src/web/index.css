@@ -237,7 +237,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .header-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -2596,6 +2598,87 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font-size: 0.78rem;
 }
 
+.finding-disposition-panel {
+  margin-bottom: 24px;
+  padding: 18px;
+}
+
+.finding-disposition-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.finding-disposition-toggle > span:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.finding-disposition-caption {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.finding-disposition-content {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.finding-disposition-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 250px) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card-subtle);
+}
+
+.finding-disposition-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.finding-disposition-row label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.78rem;
+}
+
+.finding-disposition-row textarea,
+.finding-disposition-row input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.finding-disposition-row textarea {
+  resize: vertical;
+}
+
 .remediation-note,
 .dependency-explorer-intro {
   color: var(--text-secondary);
@@ -2715,6 +2798,97 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font-size: 0.88rem;
 }
 
+.local-workspace {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 22px;
+}
+
+.local-workspace .card-header p {
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.workspace-create-form,
+.workspace-baseline-controls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.workspace-create-form label,
+.workspace-baseline-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.workspace-create-form input {
+  width: min(100%, 340px);
+}
+
+.workspace-project-list,
+.workspace-scan-assignments {
+  display: grid;
+  gap: 10px;
+}
+
+.workspace-project {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card-subtle);
+}
+
+.workspace-project-heading,
+.workspace-scan-assignment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workspace-project-heading h3,
+.workspace-scan-assignments h3 {
+  color: var(--text-primary);
+  font-size: 0.92rem;
+}
+
+.workspace-project-heading span,
+.workspace-scan-assignment > span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.workspace-baseline-controls .input-text {
+  min-width: min(100%, 280px);
+}
+
+.workspace-regression {
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.workspace-scan-assignments h3 {
+  margin-bottom: 2px;
+}
+
+.workspace-scan-assignment .input-text {
+  width: min(100%, 240px);
+}
+
 @media (max-width: 700px) {
   .guide-sections section,
   .guide-faq-item,
@@ -2723,7 +2897,26 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   }
 
   .comparison-selectors,
-  .comparison-summary {
+  .comparison-summary,
+  .finding-disposition-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finding-disposition-heading {
+    grid-column: 1;
+  }
+
+  .workspace-create-form,
+  .workspace-project-heading,
+  .workspace-scan-assignment {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .workspace-create-form input,
+  .workspace-baseline-controls,
+  .workspace-baseline-controls .input-text,
+  .workspace-scan-assignment .input-text {
+    width: 100%;
   }
 }

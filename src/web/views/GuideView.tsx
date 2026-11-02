@@ -36,7 +36,7 @@ const faqItems = [
   },
   {
     question: 'What data is sent to external services?',
-    answer: 'The scan API or browser fallback processes manifest contents to extract dependency identifiers. Package names and versions are sent to OSV; optional maintenance checks use deps.dev. Public GitHub scans fetch supported manifests from GitHub raw content. Do not submit secrets, private repository URLs, or files you are not authorized to scan.'
+    answer: 'The scan API or browser fallback processes manifest contents to extract dependency identifiers. Package names and versions are sent to OSV; optional maintenance checks use deps.dev. If EPSS/KEV enrichment is enabled, matching CVE identifiers are sent to FIRST.org and the CISA KEV catalog is downloaded and filtered locally. Public GitHub scans fetch supported manifests from GitHub raw content. Do not submit secrets, private repository URLs, or files you are not authorized to scan.'
   },
   {
     question: 'Can I use Veylix in CI?',
@@ -79,22 +79,24 @@ export const GuideView: React.FC<GuideViewProps> = ({ page }) => {
           <section>
             <h2>How scanning works</h2>
             <p>The existing TypeScript engine parses supported manifests and queries OSV using package names, ecosystems, and resolved or parser-derived versions. Optional maintenance checks query deps.dev. Public GitHub scans fetch supported manifests; Veylix does not clone or execute repository code.</p>
+            <p>Optional exploitability enrichment queries FIRST.org EPSS by CVE identifier and compares those identifiers with the public CISA KEV catalog. Source dates and retrieval timestamps are shown when available. This enrichment can be disabled; unavailable data adds a warning but does not erase OSV findings. Advisory published/modified dates are source timestamps, not historical snapshots.</p>
             <p>Dependency relationships are shown only when lockfile paths contain exact package names and versions that can be matched unambiguously. Other parser formats may provide inventory and direct/transitive labels without a provable parent-child graph; those relationships are not inferred.</p>
           </section>
           <section>
             <h2>Local CLI</h2>
             <p>From a Veylix checkout with Node.js 20 or newer and dependencies installed, run:</p>
             <pre><code>node ./bin/veylix.js scan --file ./package-lock.json --ecosystem npm --threshold high --format json</code></pre>
-            <p>Supported inputs include package-lock.json, package.json with an adjacent lockfile, requirements.txt, poetry.lock, or a directory containing a supported manifest. JSON output is intended for automation. Exit code 0 means the threshold was not reached, 1 means a finding met it, and 2 means invalid input or scan execution failure.</p>
+            <p>Supported inputs include package-lock.json, package.json with an adjacent lockfile, requirements.txt, poetry.lock, or a directory containing a supported manifest. Output formats include JSON, text, SARIF 2.1.0, CycloneDX 1.5, SPDX 2.3, Markdown, and self-contained HTML. Exit code 0 means the threshold was not reached, 1 means a finding met it, and 2 means invalid input or scan execution failure.</p>
+            <p>A separate local-only pattern scanner is available as <code>node ./bin/veylix.js secrets --path .</code>. It scans bounded regular files, skips common generated/vendor directories and symbolic links, and never prints matched credential values. It is heuristic and is not a substitute for provider-specific credential scanners.</p>
           </section>
           <section>
             <h2>GitHub Actions</h2>
-            <p>The repository’s <code>.github/workflows/veylix.yml</code> demonstrates a local CLI scan with minimum read-only repository permissions, SHA-pinned GitHub Actions, and a JSON artifact. The CLI makes upstream lookups to OSV (and deps.dev only when maintenance enrichment is enabled); it does not send a manifest to a Veylix-hosted scan API. For other repositories, use a trusted pinned copy or distribution of the CLI rather than an unpinned source.</p>
+            <p>The repository’s <code>.github/workflows/veylix.yml</code> demonstrates push, pull-request, and scheduled local CLI scans with minimum read-only repository permissions, SHA-pinned GitHub Actions, and a JSON artifact. The CLI makes upstream lookups to OSV (and deps.dev only when maintenance enrichment is enabled); it does not send a manifest to a Veylix-hosted scan API. For other repositories, use a trusted pinned copy or distribution of the CLI rather than an unpinned source.</p>
           </section>
           <section>
             <h2>Privacy and limitations</h2>
             <p>Reports and scan comparisons are stored/calculated in this browser only. The server does not intentionally retain scan reports. Package identifiers are sent to upstream advisory services to perform lookups; hosting providers may process operational request metadata. See the <a href="/privacy">Privacy Policy</a> for further details.</p>
-            <p>Coverage depends on parsed files and upstream advisory data. Python ranges may be analyzed using a base version and carry a warning. A missing advisory is not proof of safety, and upgrade compatibility is not tested by Veylix.</p>
+            <p>Coverage depends on parsed files and upstream advisory data. Python ranges may be analyzed using a base version and carry a warning. Dependency freshness, provenance, maintainer history, malicious-package status, lockfile integrity, licenses, and historical advisory change tracking are not comprehensively implemented. A missing advisory is not proof of safety, and upgrade compatibility is not tested by Veylix.</p>
           </section>
         </div>
       )}

@@ -113,6 +113,7 @@ export class OSVClient {
 
     const CHUNK_SIZE = 1000;
     const allResults: OSVBatchResponse['results'] = [];
+    const warnings: string[] = [];
 
     for (let i = 0; i < packages.length; i += CHUNK_SIZE) {
       const chunk = packages.slice(i, i + CHUNK_SIZE);
@@ -127,6 +128,7 @@ export class OSVClient {
       };
 
       const result = await this.executeSingleBatch(batchRequest);
+      warnings.push(...(result.warnings ?? []));
 
       // If hydrate is enabled, fetch full details for all unique vuln IDs concurrently
       if (this.hydrate) {
@@ -156,7 +158,7 @@ export class OSVClient {
       allResults.push(...result.results);
     }
 
-    return { results: allResults };
+    return { results: allResults, ...(warnings.length ? { warnings: Array.from(new Set(warnings)) } : {}) };
   }
 
   private async executeSingleBatch(requestBody: OSVBatchRequest): Promise<OSVBatchResponse> {
@@ -194,7 +196,11 @@ export class OSVClient {
         throw new Error('OSV API response missing "results" array.');
       }
 
-      return data as OSVBatchResponse;
+      const cacheAgeSeconds = Number(response.headers?.get?.('x-veylix-cache-age-seconds'));
+      const warnings = Number.isFinite(cacheAgeSeconds) && cacheAgeSeconds >= 0
+        ? [`Used a local OSV advisory cache entry captured ${Math.floor(cacheAgeSeconds / 3600)} hour(s) ago.`]
+        : [];
+      return { ...(data as OSVBatchResponse), ...(warnings.length ? { warnings } : {}) };
     } catch (err: any) {
       if (err.name === 'AbortError') {
         throw new Error(`OSV API request timed out after ${this.timeoutMs}ms.`);
@@ -355,6 +361,7 @@ export class OSVClient {
       details,
       fixedVersion,
       published,
+      modified: advisory.modified,
       affectedVersionRange: rangeDescriptions.length > 0 ? rangeDescriptions.join('; ') : undefined,
       actionableRecommendation
     };

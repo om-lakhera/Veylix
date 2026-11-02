@@ -59,6 +59,27 @@ describe('ScanService', () => {
     expect(res.error).not.toContain('OSV network down');
   });
 
+  it('accepts optional exploit intelligence and returns findings if sources have no matching CVEs', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ results: [{ vulns: [] }] })
+    });
+    const service = new ScanService({
+      osvOptions: { fetchFn: mockFetch },
+      exploitIntelOptions: { fetchFn: vi.fn() }
+    });
+
+    const res = await service.scanFiles({
+      requirementsTxt: 'requests==2.28.1\n',
+      fetchExploitIntelligence: true
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.report?.warnings).toEqual([]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it('does not return unexpected GitHub fetch errors to the client', async () => {
     const service = new ScanService({}, vi.fn().mockRejectedValue(new Error('upstream response secret')));
 

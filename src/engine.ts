@@ -2,6 +2,7 @@ import { parseNpmManifests, ParseOptions } from './parser.js';
 import { parseRequirementsTxt, parsePoetryLock, PythonParseOptions } from './python-parser.js';
 import { OSVClient, OSVClientOptions } from './osv-client.js';
 import { DepsDevClient, DepsDevClientOptions } from './deps-client.js';
+import { ExploitIntelClient, ExploitIntelClientOptions } from './exploit-intel-client.js';
 import {
   AnalysisReport,
   AnalyzedPackage,
@@ -17,25 +18,31 @@ export interface AnalyzerOptions {
   pythonParseOptions?: PythonParseOptions;
   osvOptions?: OSVClientOptions;
   depsDevOptions?: DepsDevClientOptions;
+  exploitIntelOptions?: ExploitIntelClientOptions;
   fetchMaintenanceHealth?: boolean; // When true, enriches packages with OpenSSF & deps.dev metrics
   maxMaintenanceLookups?: number; // Caps outbound maintenance queries (e.g. for direct packages only)
+  fetchExploitIntelligence?: boolean;
 }
 
 export class VeylixEngine {
   private osvClient: OSVClient;
   private depsDevClient: DepsDevClient;
+  private exploitIntelClient: ExploitIntelClient;
   private parseOptions: ParseOptions;
   private pythonParseOptions: PythonParseOptions;
   private fetchMaintenanceHealth: boolean;
   private maxMaintenanceLookups: number;
+  private fetchExploitIntelligence: boolean;
 
   constructor(options: AnalyzerOptions = {}) {
     this.osvClient = new OSVClient(options.osvOptions);
     this.depsDevClient = new DepsDevClient(options.depsDevOptions);
+    this.exploitIntelClient = new ExploitIntelClient(options.exploitIntelOptions);
     this.parseOptions = options.parseOptions || {};
     this.pythonParseOptions = options.pythonParseOptions || {};
     this.fetchMaintenanceHealth = Boolean(options.fetchMaintenanceHealth);
     this.maxMaintenanceLookups = options.maxMaintenanceLookups ?? 30;
+    this.fetchExploitIntelligence = Boolean(options.fetchExploitIntelligence);
   }
 
   /**
@@ -146,6 +153,7 @@ export class VeylixEngine {
     let totalAdvisoriesCount = 0;
     let maintenanceRisksCount = 0;
     let deprecatedPackagesCount = 0;
+    const reportWarnings = [...warnings, ...(osvResponse.warnings ?? [])];
 
     const severityCounts = {
       critical: 0,
@@ -222,6 +230,21 @@ export class VeylixEngine {
       }
     }
 
+    if (this.fetchExploitIntelligence) {
+      const allFindings = analyzedPackages.flatMap((pkg) => pkg.vulnerabilities);
+      const intelligence = await this.exploitIntelClient.enrich(allFindings);
+      reportWarnings.push(...intelligence.warnings);
+      for (const finding of allFindings) {
+        const cveIds = [finding.advisoryId, ...finding.aliases]
+          .filter((id) => /^CVE-\d{4}-\d{4,}$/i.test(id))
+          .map((id) => id.toUpperCase());
+        const indicators = cveIds
+          .map((cve) => intelligence.byCve.get(cve))
+          .filter((indicator) => indicator !== undefined);
+        if (indicators.length > 0) finding.exploitability = indicators;
+      }
+    }
+
     const endTime = performance.now();
     const scanDurationMs = Math.round((endTime - startTime) * 100) / 100;
 
@@ -249,7 +272,7 @@ export class VeylixEngine {
       packages: analyzedPackages,
       vulnerablePackages,
       maintenanceRiskPackages,
-      warnings
+      warnings: reportWarnings
     };
   }
 }

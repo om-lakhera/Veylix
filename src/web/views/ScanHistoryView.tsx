@@ -2,6 +2,14 @@ import React from 'react';
 import { ScanHistoryItem } from '../types.js';
 import { clearAllScanHistory, deleteScanFromHistory, downloadJsonFile } from '../services/storage.js';
 import { compareScans } from '../services/scan-comparison.js';
+import {
+  assignScanToProject,
+  createLocalWorkspaceProject,
+  deleteLocalWorkspaceProject,
+  loadLocalWorkspace,
+  LocalWorkspace,
+  setProjectBaseline
+} from '../services/workspace-storage.js';
 
 interface ScanHistoryViewProps {
   history: ScanHistoryItem[];
@@ -19,6 +27,9 @@ export const ScanHistoryView: React.FC<ScanHistoryViewProps> = ({
   const [storageError, setStorageError] = React.useState('');
   const [previousScanId, setPreviousScanId] = React.useState(history[1]?.id ?? '');
   const [currentScanId, setCurrentScanId] = React.useState(history[0]?.id ?? '');
+  const [workspace, setWorkspace] = React.useState<LocalWorkspace>(loadLocalWorkspace);
+  const [projectName, setProjectName] = React.useState('');
+  const [baselineChoices, setBaselineChoices] = React.useState<Record<string, string>>({});
   const effectivePreviousScanId = history.some((item) => item.id === previousScanId)
     ? previousScanId
     : history[1]?.id ?? '';
@@ -53,12 +64,62 @@ export const ScanHistoryView: React.FC<ScanHistoryViewProps> = ({
         return;
       }
       setStorageError('');
+      setWorkspace(loadLocalWorkspace());
       onHistoryUpdate([]);
     }
   };
 
   const handleExportAll = () => {
     downloadJsonFile(`veylix_scan_history_${Date.now()}.json`, history);
+  };
+
+  const handleCreateProject = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = createLocalWorkspaceProject(projectName);
+    if (!result.success) {
+      setStorageError(result.error ?? 'Could not create this local project.');
+      return;
+    }
+    setWorkspace(result.workspace);
+    setProjectName('');
+    setStorageError('');
+  };
+
+  const handleAssignScan = (scanId: string, projectId: string) => {
+    const result = assignScanToProject(scanId, projectId || undefined);
+    if (!result.success) {
+      setStorageError(result.error ?? 'Could not update the local project assignment.');
+      return;
+    }
+    setWorkspace(result.workspace);
+    setStorageError('');
+  };
+
+  const handleSetBaseline = (projectId: string) => {
+    const scanId = baselineChoices[projectId] ??
+      history.find((item) => workspace.scanProjects[item.id] === projectId)?.id;
+    if (!scanId) {
+      setStorageError('Assign at least one saved scan to this project before setting its baseline.');
+      return;
+    }
+    const result = setProjectBaseline(projectId, scanId);
+    if (!result.success) {
+      setStorageError(result.error ?? 'Could not save this project baseline.');
+      return;
+    }
+    setWorkspace(result.workspace);
+    setStorageError('');
+  };
+
+  const handleDeleteProject = (projectId: string, projectTitle: string) => {
+    if (!confirm(`Delete the local project "${projectTitle}"? Saved scans will remain in history but become unassigned.`)) return;
+    const result = deleteLocalWorkspaceProject(projectId);
+    if (!result.success) {
+      setStorageError('Could not delete the local project from browser storage.');
+      return;
+    }
+    setWorkspace(result.workspace);
+    setStorageError('');
   };
 
   return (
@@ -96,6 +157,107 @@ export const ScanHistoryView: React.FC<ScanHistoryViewProps> = ({
       </div>
 
       {storageError && <div className="alert alert-error" role="alert">{storageError}</div>}
+
+      <section className="card card-elevated local-workspace" aria-labelledby="local-workspace-title">
+        <div className="card-header">
+          <div>
+            <h2 className="card-title" id="local-workspace-title">Local project workspace</h2>
+            <p>Create private project groups, assign saved scans, and set a baseline for regression tracking. All data stays in this browser.</p>
+          </div>
+        </div>
+        <form className="workspace-create-form" onSubmit={handleCreateProject}>
+          <label htmlFor="workspace-project-name">Project name</label>
+          <input
+            id="workspace-project-name"
+            className="input-text"
+            maxLength={100}
+            value={projectName}
+            onChange={(event) => setProjectName(event.target.value)}
+            placeholder="e.g. Payments service"
+            required
+          />
+          <button className="btn btn-primary btn-sm" type="submit">Create project</button>
+        </form>
+
+        {workspace.projects.length === 0 ? (
+          <p className="comparison-empty">No local projects yet. Your saved scans remain available in Scan History.</p>
+        ) : (
+          <div className="workspace-project-list">
+            {workspace.projects.map((project) => {
+              const projectScans = history
+                .filter((item) => workspace.scanProjects[item.id] === project.id)
+                .sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+              const baselineId = workspace.baselines[project.id];
+              const baseline = projectScans.find((item) => item.id === baselineId);
+              const latestCandidate = projectScans[0];
+              const latest = latestCandidate?.id !== baselineId ? latestCandidate : undefined;
+              const regression = baseline && latest ? compareScans(baseline, latest) : null;
+              return (
+                <article className="workspace-project" key={project.id}>
+                  <div className="workspace-project-heading">
+                    <div>
+                      <h3>{project.name}</h3>
+                      <span>{projectScans.length} assigned saved scan{projectScans.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleDeleteProject(project.id, project.name)}>
+                      Delete project
+                    </button>
+                  </div>
+                  {projectScans.length > 0 && (
+                    <div className="workspace-baseline-controls">
+                      <label>
+                        Baseline scan
+                        <select
+                          className="input-text"
+                          value={baselineChoices[project.id] ?? baselineId ?? projectScans[0]!.id}
+                          onChange={(event) => setBaselineChoices((current) => ({ ...current, [project.id]: event.target.value }))}
+                        >
+                          {projectScans.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.target.name} · {new Date(item.timestamp).toLocaleString()}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button className="btn btn-secondary btn-sm" type="button" onClick={() => handleSetBaseline(project.id)}>
+                        Save baseline
+                      </button>
+                    </div>
+                  )}
+                  {regression && (
+                    <div className="workspace-regression" role="status">
+                      <strong>Regression comparison:</strong> {regression.newFindings.length} new,{' '}
+                      {regression.resolvedFindings.length} resolved, {regression.remainingFindings.length} remaining,{' '}
+                      {regression.uncertainFindings.length} uncertain findings.
+                      {regression.ecosystemMismatch && ' Different ecosystems; findings are uncertain.'}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        {workspace.projects.length > 0 && history.length > 0 && (
+          <div className="workspace-scan-assignments">
+            <h3>Assign saved scans to projects</h3>
+            {history.map((item) => (
+              <label className="workspace-scan-assignment" key={item.id}>
+                <span>{item.target.name} · {new Date(item.timestamp).toLocaleString()}</span>
+                <select
+                  className="input-text"
+                  aria-label={`Project for scan ${item.target.name} from ${new Date(item.timestamp).toLocaleString()}`}
+                  value={workspace.scanProjects[item.id] ?? ''}
+                  onChange={(event) => handleAssignScan(item.id, event.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {workspace.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                </select>
+              </label>
+            ))}
+          </div>
+        )}
+      </section>
 
       <div className="alert alert-info" style={{ marginBottom: '24px' }}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>

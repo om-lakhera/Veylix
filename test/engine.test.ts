@@ -75,6 +75,74 @@ describe('VeylixEngine Integration (Recorded Fixtures)', () => {
     );
   });
 
+  it('adds EPSS and CISA KEV indicators without changing OSV vulnerability counts', async () => {
+    const exploitFetch = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'api.first.org') {
+        return new Response(JSON.stringify({
+          date: '2024-06-01',
+          data: [{ cve: 'CVE-2020-8203', epss: '0.42', percentile: '0.91' }]
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        dateReleased: '2024-06-02',
+        vulnerabilities: [{
+          cveID: 'CVE-2020-8203',
+          dateAdded: '2024-05-01'
+        }]
+      }), { status: 200 });
+    });
+    const engine = new VeylixEngine({
+      osvOptions: {
+        fetchFn: vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => recordedOsvData
+        })
+      },
+      fetchExploitIntelligence: true,
+      exploitIntelOptions: { fetchFn: exploitFetch }
+    });
+
+    const report = await engine.analyzeNpmProject(packageJsonStr, packageLockV3Str);
+    const lodash = report.packages.find((pkg) => pkg.name === 'lodash' && pkg.version === '4.17.15');
+
+    expect(report.summary.vulnerablePackagesCount).toBe(2);
+    expect(lodash?.vulnerabilities[0]?.exploitability).toEqual([
+      expect.objectContaining({
+        cve: 'CVE-2020-8203',
+        epss: expect.objectContaining({ score: 0.42, percentile: 0.91, dataDate: '2024-06-01' }),
+        kev: expect.objectContaining({ dateAdded: '2024-05-01', catalogDate: '2024-06-02' })
+      })
+    ]);
+    expect(exploitFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps vulnerability results when optional exploitation sources fail and reports warnings', async () => {
+    const engine = new VeylixEngine({
+      osvOptions: {
+        fetchFn: vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => recordedOsvData
+        })
+      },
+      fetchExploitIntelligence: true,
+      exploitIntelOptions: { fetchFn: vi.fn().mockRejectedValue(new Error('upstream private body')) }
+    });
+
+    const report = await engine.analyzeNpmProject(packageJsonStr, packageLockV3Str);
+
+    expect(report.summary.vulnerablePackagesCount).toBe(2);
+    expect(report.warnings).toContain(
+      'FIRST.org EPSS data could not be retrieved; EPSS scores are unavailable for this scan.'
+    );
+    expect(report.warnings).toContain(
+      'CISA KEV data could not be retrieved; known-exploited status is unavailable for this scan.'
+    );
+    expect(report.warnings.join(' ')).not.toContain('upstream private body');
+  });
+
   it('runs complete analysis on Python requirements.txt mapping vulnerabilities correctly', async () => {
     const requirementsTxtStr = fs.readFileSync(path.resolve(__dirname, 'fixtures/requirements.txt'), 'utf8');
     const recordedPythonOsv = JSON.parse(

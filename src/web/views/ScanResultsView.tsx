@@ -1,9 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { AnalysisReport, AnalyzedPackage, VulnerabilityFinding } from '../../types.js';
 import { ScanTargetInfo, calculateRiskScore } from '../types.js';
-import { downloadJsonFile } from '../services/storage.js';
+import { downloadJsonFile, downloadTextFile } from '../services/storage.js';
+import { serializeReportFormat } from '../../report-formats.js';
 import { copyUpgradeCommand, generateUpgradeCommand } from '../services/remediation.js';
 import { buildDependencyGraph } from '../services/dependency-graph.js';
+import { FindingDispositionPanel } from '../components/FindingDispositionPanel.js';
+import { FindingDisposition, isFindingIgnored, loadFindingDispositions, stableFindingId } from '../services/finding-dispositions.js';
 
 interface ScanResultsViewProps {
   target: ScanTargetInfo;
@@ -53,6 +56,15 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
   const [sortOption, setSortOption] = useState<SortOption>('SEVERITY');
   const [expandedPkgKeys, setExpandedPkgKeys] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'vulnerabilities' | 'maintenance' | 'recommendations' | 'dependencies' | 'all-packages'>('vulnerabilities');
+  const [dispositions, setDispositions] = useState<FindingDisposition[]>(loadFindingDispositions);
+  const [hideIgnored, setHideIgnored] = useState(false);
+  const dispositionMap = useMemo(
+    () => new Map(dispositions.map((item) => [item.findingId, item])),
+    [dispositions]
+  );
+  const visibleFindings = (pkg: AnalyzedPackage): VulnerabilityFinding[] => pkg.vulnerabilities.filter((finding) =>
+    !hideIgnored || !isFindingIgnored(dispositionMap.get(stableFindingId(pkg.ecosystem, pkg.name, finding)))
+  );
 
   const risk = calculateRiskScore(report);
   const { summary } = report;
@@ -74,7 +86,7 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const nameMatches = pkg.name.toLowerCase().includes(query);
-        const vulnMatches = pkg.vulnerabilities.some(
+        const vulnMatches = visibleFindings(pkg).some(
           (v) =>
             v.advisoryId.toLowerCase().includes(query) ||
             v.summary.toLowerCase().includes(query) ||
@@ -93,10 +105,11 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
       }
 
       if (severityFilter !== 'ALL') {
-        const hasMatchingVuln = pkg.vulnerabilities.some((v) => v.severityLevel === severityFilter);
+        const hasMatchingVuln = visibleFindings(pkg).some((v) => v.severityLevel === severityFilter);
         if (!hasMatchingVuln) return false;
       }
 
+      if (hideIgnored && pkg.vulnerabilities.length > 0 && visibleFindings(pkg).length === 0) return false;
       return true;
     }).sort((a, b) => {
       if (sortOption === 'PACKAGE_NAME') {
@@ -112,22 +125,22 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
 
       // Default: Highest severity first
       const getWeight = (pkg: AnalyzedPackage) => {
-        if (pkg.vulnerabilities.some((v) => v.severityLevel === 'CRITICAL')) return 4;
-        if (pkg.vulnerabilities.some((v) => v.severityLevel === 'HIGH')) return 3;
-        if (pkg.vulnerabilities.some((v) => v.severityLevel === 'MODERATE')) return 2;
-        if (pkg.vulnerabilities.some((v) => v.severityLevel === 'LOW')) return 1;
+        if (visibleFindings(pkg).some((v) => v.severityLevel === 'CRITICAL')) return 4;
+        if (visibleFindings(pkg).some((v) => v.severityLevel === 'HIGH')) return 3;
+        if (visibleFindings(pkg).some((v) => v.severityLevel === 'MODERATE')) return 2;
+        if (visibleFindings(pkg).some((v) => v.severityLevel === 'LOW')) return 1;
         if (pkg.maintenanceHealth?.status === 'MAINTENANCE_RISK') return 0.5;
         return 0;
       };
 
       return getWeight(b) - getWeight(a);
     });
-  }, [report.packages, searchQuery, scopeFilter, severityFilter, sortOption]);
+  }, [report.packages, searchQuery, scopeFilter, severityFilter, sortOption, hideIgnored, dispositionMap]);
 
   // Packages with vulnerabilities
   const vulnerableList = useMemo(() => {
-    return filteredPackages.filter((p) => p.hasVulnerability);
-  }, [filteredPackages]);
+    return filteredPackages.filter((p) => visibleFindings(p).length > 0);
+  }, [filteredPackages, hideIgnored, dispositionMap]);
 
   // Maintenance risk packages
   const maintenanceRiskList = useMemo(() => {
@@ -138,6 +151,16 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
   const handleExportJson = () => {
     const filename = `veylix_report_${target.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.json`;
     downloadJsonFile(filename, report);
+  };
+
+  const handleExportFormat = (format: 'sarif' | 'cyclonedx' | 'spdx' | 'markdown' | 'html') => {
+    const extension = format === 'sarif' ? 'sarif' :
+      format === 'markdown' ? 'md' :
+      format === 'html' ? 'html' : 'json';
+    const mimeType = format === 'html' ? 'text/html' :
+      format === 'markdown' ? 'text/markdown' : 'application/json';
+    const filename = `veylix_report_${target.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.${extension}`;
+    downloadTextFile(filename, serializeReportFormat(report, format), mimeType);
   };
 
   // Handle Print
@@ -178,6 +201,21 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
             </svg>
             Export JSON
           </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => handleExportFormat('sarif')}>
+            Export SARIF
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => handleExportFormat('cyclonedx')}>
+            Export CycloneDX
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => handleExportFormat('spdx')}>
+            Export SPDX
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => handleExportFormat('markdown')}>
+            Export Markdown
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => handleExportFormat('html')}>
+            Export HTML
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={handlePrintReport}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 6 2 18 2 18 9"/>
@@ -210,6 +248,8 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
           </div>
         </div>
       )}
+
+      <FindingDispositionPanel report={report} dispositions={dispositions} onChange={setDispositions} />
 
       {/* Executive Risk Score Card */}
       <div className="risk-score-card" style={{ boxShadow: 'var(--shadow-md)' }}>
@@ -371,6 +411,10 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
             </div>
 
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <label style={{ display: 'flex', gap: '6px', alignItems: 'center', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                <input type="checkbox" checked={hideIgnored} onChange={(event) => setHideIgnored(event.target.checked)} />
+                Hide active local ignores
+              </label>
               <select
                 className="input-text"
                 style={{ padding: '6px 10px', fontSize: '0.82rem', width: 'auto' }}
@@ -403,12 +447,18 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
                 </svg>
               </div>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '6px' }}>
-                {report.vulnerablePackages.length === 0 ? 'No Vulnerabilities Detected' : 'No Matches for Current Filters'}
+                {report.vulnerablePackages.length === 0
+                  ? 'No Vulnerabilities Detected'
+                  : hideIgnored && report.vulnerablePackages.every((pkg) => visibleFindings(pkg).length === 0)
+                    ? 'All findings are locally ignored'
+                    : 'No Matches for Current Filters'}
               </h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', maxWidth: '440px', margin: '0 auto' }}>
                 {report.vulnerablePackages.length === 0
                   ? 'All analyzed packages resolved cleanly with zero known OSV vulnerability advisories.'
-                  : 'Try clearing your search keyword or switching severity filters.'}
+                  : hideIgnored && report.vulnerablePackages.every((pkg) => visibleFindings(pkg).length === 0)
+                    ? 'Active local ignores are hidden from this list only. The original report totals and exports are unchanged.'
+                    : 'Try clearing your search keyword or switching severity filters.'}
               </p>
             </div>
           ) : (
@@ -444,7 +494,7 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
 
                           <td>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              {pkg.vulnerabilities.map((v) => (
+                              {visibleFindings(pkg).map((v) => (
                                 <span
                                   key={v.advisoryId}
                                   className={`badge ${
@@ -461,7 +511,7 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
 
                           <td>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              {pkg.vulnerabilities.map((v) => (
+                              {visibleFindings(pkg).map((v) => (
                                 <div key={v.advisoryId}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
                                     <a
@@ -491,7 +541,7 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
                           </td>
 
                           <td>
-                            {pkg.vulnerabilities.map((v) => (
+                            {visibleFindings(pkg).map((v) => (
                               <div key={v.advisoryId} style={{ marginBottom: '6px' }}>
                                 {v.fixedVersion ? (
                                   <span className="badge badge-low" style={{ fontFamily: 'var(--font-mono)' }}>
@@ -533,7 +583,7 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
                                   </div>
                                 )}
 
-                                {pkg.vulnerabilities.map((v) => (
+                                {visibleFindings(pkg).map((v) => (
                                   <div
                                     key={v.advisoryId}
                                     style={{
@@ -562,6 +612,32 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
                                         <span style={{ color: 'var(--text-muted)' }}>Affected Ranges: </span>
                                         <code>{v.affectedVersionRange}</code>
                                       </div>
+                                    )}
+
+                                    {(v.published || v.modified || v.exploitability?.length) && (
+                                      <section aria-label={`Timeline and exploit intelligence for ${v.advisoryId}`}>
+                                        <strong style={{ fontSize: '0.82rem' }}>Advisory timeline & exploitation data</strong>
+                                        <ul style={{ margin: '4px 0 0', paddingLeft: '20px', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                                          {v.published && <li>Published by OSV: <time dateTime={v.published}>{v.published}</time></li>}
+                                          {v.modified && <li>Last modified by OSV: <time dateTime={v.modified}>{v.modified}</time></li>}
+                                          {v.exploitability?.flatMap((indicator) => [
+                                            ...(indicator.epss ? [
+                                              <li key={`${indicator.cve}-epss`}>
+                                                EPSS for {indicator.cve}: {(indicator.epss.score * 100).toFixed(2)}% probability
+                                                (percentile {(indicator.epss.percentile * 100).toFixed(1)}%; data date {indicator.epss.dataDate ?? 'not supplied'}; retrieved {indicator.epss.retrievedAt}).
+                                              </li>
+                                            ] : []),
+                                            ...(indicator.kev ? [
+                                              <li key={`${indicator.cve}-kev`}>
+                                                CISA KEV lists {indicator.cve} as known exploited (added {indicator.kev.dateAdded}
+                                                {indicator.kev.dueDate ? `; due ${indicator.kev.dueDate}` : ''}
+                                                {indicator.kev.catalogDate ? `; catalog dated ${indicator.kev.catalogDate}` : ''}).
+                                                {indicator.kev.requiredAction ? ` Required action: ${indicator.kev.requiredAction}` : ''}
+                                              </li>
+                                            ] : [])
+                                          ])}
+                                        </ul>
+                                      </section>
                                     )}
 
                                     <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
@@ -605,7 +681,7 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Critical / High CVEs */}
               {vulnerableList.map((pkg) => {
-                const fixCandidates = pkg.vulnerabilities.filter((finding) => Boolean(finding.fixedVersion));
+                const fixCandidates = visibleFindings(pkg).filter((finding) => Boolean(finding.fixedVersion));
                 const fixCandidate = fixCandidates.find((finding) =>
                   Boolean(generateUpgradeCommand(pkg.ecosystem, pkg.name, finding.fixedVersion).command)
                 ) ?? fixCandidates[0];
@@ -630,15 +706,15 @@ export const ScanResultsView: React.FC<ScanResultsViewProps> = ({
                         <span className="badge badge-neutral">{pkg.isDirect ? 'Direct' : 'Transitive'}</span>
                       </div>
                       <span className={`badge ${
-                        pkg.vulnerabilities.some((v) => v.severityLevel === 'CRITICAL') ? 'badge-critical' :
-                        pkg.vulnerabilities.some((v) => v.severityLevel === 'HIGH') ? 'badge-high' : 'badge-moderate'
+                        visibleFindings(pkg).some((v) => v.severityLevel === 'CRITICAL') ? 'badge-critical' :
+                        visibleFindings(pkg).some((v) => v.severityLevel === 'HIGH') ? 'badge-high' : 'badge-moderate'
                       }`}>
-                        {pkg.vulnerabilities.length} Advisory{pkg.vulnerabilities.length === 1 ? '' : 'ies'}
+                        {visibleFindings(pkg).length} Advisory{visibleFindings(pkg).length === 1 ? '' : 'ies'}
                       </span>
                     </div>
 
                     <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-                      {pkg.vulnerabilities.map((v) => `${v.advisoryId}: ${v.actionableRecommendation}`).join(' ')}
+                      {visibleFindings(pkg).map((v) => `${v.advisoryId}: ${v.actionableRecommendation}`).join(' ')}
                     </p>
 
                     {fixCandidate?.fixedVersion && upgrade.command ? (

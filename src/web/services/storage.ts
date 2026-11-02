@@ -1,5 +1,7 @@
 import { AnalysisReport } from '../../types.js';
 import { ScanHistoryItem, ScanTargetInfo, calculateRiskScore } from '../types.js';
+import { clearFindingDispositions } from './finding-dispositions.js';
+import { clearLocalWorkspace, removeScanFromWorkspace } from './workspace-storage.js';
 
 const STORAGE_KEY = 'veylix_scan_history_v1';
 const MAX_SAVED_SCANS = 25;
@@ -81,7 +83,7 @@ export function deleteScanFromHistory(
     const existing = loadScanHistory();
     const updated = existing.filter((s) => s.id !== id);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    return { success: true, items: updated };
+    return { success: removeScanFromWorkspace(id), items: updated };
   } catch (e) {
     console.warn('Failed to delete scan item from localStorage:', e);
     return { success: false, items: [] };
@@ -91,7 +93,9 @@ export function deleteScanFromHistory(
 export function clearAllScanHistory(): boolean {
   try {
     localStorage.removeItem(STORAGE_KEY);
-    return true;
+    const workspaceCleared = clearLocalWorkspace();
+    const dispositionsCleared = clearFindingDispositions();
+    return workspaceCleared && dispositionsCleared;
   } catch (e) {
     console.warn('Failed to clear scan history from localStorage:', e);
     return false;
@@ -100,7 +104,11 @@ export function clearAllScanHistory(): boolean {
 
 export function downloadJsonFile(filename: string, data: unknown): void {
   const jsonStr = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
+  downloadTextFile(filename, jsonStr, 'application/json');
+}
+
+export function downloadTextFile(filename: string, text: string, mimeType = 'text/plain'): void {
+  const blob = new Blob([text], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

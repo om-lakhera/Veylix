@@ -86,6 +86,7 @@ export interface OSVBatchResponseItem {
 
 export interface OSVBatchResponse {
   results: OSVBatchResponseItem[];
+  warnings?: string[];
 }
 
 export interface VulnerabilityFinding {
@@ -97,8 +98,28 @@ export interface VulnerabilityFinding {
   details?: string;
   fixedVersion?: string;
   published?: string;
+  modified?: string;
   affectedVersionRange?: string;
+  exploitability?: ExploitabilityIndicator[];
   actionableRecommendation: string;
+}
+
+export interface ExploitabilityIndicator {
+  cve: string;
+  epss?: {
+    score: number;
+    percentile: number;
+    dataDate?: string;
+    retrievedAt: string;
+  };
+  kev?: {
+    dateAdded: string;
+    dueDate?: string;
+    requiredAction?: string;
+    knownRansomwareCampaignUse?: string;
+    catalogDate?: string;
+    retrievedAt: string;
+  };
 }
 
 /**
